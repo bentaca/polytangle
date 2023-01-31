@@ -9,6 +9,7 @@
 *.bs
 *_skip
 *.skip
+*.bak
 
 # Devel::Cover
 cover_db/
