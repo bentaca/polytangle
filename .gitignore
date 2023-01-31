@@ -5,7 +5,10 @@
 /MYMETA.*
 *.o
 *.pm.tdy
+*.tdy
 *.bs
+*_skip
+*.skip
 
 # Devel::Cover
 cover_db/
