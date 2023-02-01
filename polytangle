@@ -15,9 +15,9 @@ use Getopt::Long qw(GetOptions) ;
 
 my ( $comment_opt, $doctype_opt ) ;
 GetOptions(
-    'cmt'     => \$comment_opt,
-    'doctype' => \$doctype_opt
-    ) ;
+   'cmt'     => \$comment_opt,
+   'doctype' => \$doctype_opt
+   ) ;
 
 die "usage: $USAGE" unless @ARGV == 2 ;
 
@@ -28,27 +28,32 @@ my ( $comment_format, $doctype ) ;
 my $basename = basename( $filename ) ;
 
 our %Comments = (
-    "# line %s \"$basename\"" => [ qw( pl) ],
-    "# %s \"$basename\""      => [ qw( ml mli) ],
-    '# %s'                    => [ qw( sh rb py ) ],
-    '(* %s *)'                => [ qw( sml ) ],
-    '// %s'                   => [ qw( d c cpp js re rei ) ],
-    '; %s'                    => [ qw( lisp l lsp scm sc ss sch ) ]
-    ) ;
+   "# line %s \"$basename\"" => [ qw( pl) ],
+   "# %s \"$basename\""      => [ qw( ml mli) ],
+   '# %s'                    => [ qw( sh rb py ) ],
+   '(* %s *)'                => [ qw( sml ) ],
+   '// %s'                   => [ qw( d c cpp js re rei ) ],
+   '; %s'                    => [ qw( el lisp l lsp scm sc ss sch ) ]
+   ) ;
 
 our %Lang_cmt = () ;
 foreach my $cmt ( keys %Comments ) {
-    my $langs = $Comments{ $cmt } ;
-    foreach my $lang ( @$langs ) {
-        $Lang_cmt{ $lang } = $cmt ;
-        }
-    }
+   my $langs = $Comments{ $cmt } ;
+   foreach my $lang ( @$langs ) {
+      $Lang_cmt{ $lang } = $cmt ;
+      }
+   }
 
 our $Include_default = qr|^\s*<<(.+)>>\s*$| ;
 
 our $Noweb_start = qr|^\s*<<(.+)>>=\s*$| ;
 our $Noweb_end   = qr|^\s*@\s*$| ;
 our $Noweb_inc   = $Include_default ;
+
+our $Babble_start  = qr|^\s*\#\+begin_src[\s\w]| ;
+our $Babble_end    = qr|^\s*\#\+end_src\b.*$| ;
+our $Babble_inc    = $Include_default ;
+our $Babble_header = qr,^\s*\#\+name\:\s*([\w_\.]+)\s*$, ;
 
 our $Markdown_fence_start_common   = qr|\w+\s+\#*([\w_\.]+)\s*$| ;
 our $Markdown_fence_start_backtick = qr|^\s*```$Markdown_fence_start_common| ;
@@ -62,9 +67,9 @@ our $Markdown_attr_start_dash     = qr|^\s*---$Markdown_attr_start_common| ;
 
 our $Markdown_zyedidia_start_common = qr|\s+\#*([\w_\.]+)\s*$| ;
 our $Markdown_zyedidia_start_backtick =
-    qr|^\s*```$Markdown_zyedidia_start_common| ;
+   qr|^\s*```$Markdown_zyedidia_start_common| ;
 our $Markdown_zyedidia_start_tilde =
-    qr|^\s*~~~$Markdown_zyedidia_start_common| ;
+   qr|^\s*~~~$Markdown_zyedidia_start_common| ;
 our $Markdown_zyedidia_start_dash = qr|^\s*---$Markdown_zyedidia_start_common| ;
 
 our $Markdown_end_backtick = qr|^\s*```\s*$| ;
@@ -74,109 +79,102 @@ our $Markdown_end_dash     = qr|^\s*---\s*$| ;
 our $Markdown_inc = $Include_default ;
 
 our %Doctypes = (
-    nw => [ $Noweb_start, $Noweb_end, $Noweb_inc ],
-    md => {
-        attr => {
-            backtick => [
-                $Markdown_attr_start_backtick, $Markdown_end_backtick,
-                $Markdown_inc
-                ],
-            tilde => [
-                $Markdown_attr_start_tilde, $Markdown_end_tilde,
-                $Markdown_inc
-                ],
-            dash => [
-                $Markdown_attr_start_dash, $Markdown_end_dash, $Markdown_inc
-                ],
-                },
-        fence => {
-            backtick => [
-                $Markdown_fence_start_backtick, $Markdown_end_backtick,
-                $Markdown_inc
-                ],
-            tilde => [
-                $Markdown_fence_start_tilde, $Markdown_end_tilde,
-                $Markdown_inc
-                ],
-            dash => [
-                $Markdown_fence_start_dash, $Markdown_end_dash,
-                $Markdown_inc
-                ],
-                },
-        zyedidia => {
-            backtick => [
-                $Markdown_zyedidia_start_backtick, $Markdown_end_backtick,
-                $Markdown_inc
-                ],
-            tilde => [
-                $Markdown_zyedidia_start_tilde, $Markdown_end_tilde,
-                $Markdown_inc
-                ],
-            dash => [
-                $Markdown_zyedidia_start_dash, $Markdown_end_dash,
-                $Markdown_inc
-                ],
-                }
+   org => [ $Babble_header, $Babble_start, $Babble_end, $Babble_inc ],
+   nw  => [ $Noweb_start,  $Noweb_end,  $Noweb_inc ],
+   md  => {
+      attr => {
+         backtick => [
+            $Markdown_attr_start_backtick, $Markdown_end_backtick,
+            $Markdown_inc
+            ],
+         tilde =>
+            [ $Markdown_attr_start_tilde, $Markdown_end_tilde, $Markdown_inc ],
+         dash =>
+            [ $Markdown_attr_start_dash, $Markdown_end_dash, $Markdown_inc ],
+            },
+      fence => {
+         backtick => [
+            $Markdown_fence_start_backtick, $Markdown_end_backtick,
+            $Markdown_inc
+            ],
+         tilde =>
+            [ $Markdown_fence_start_tilde, $Markdown_end_tilde, $Markdown_inc ],
+         dash =>
+            [ $Markdown_fence_start_dash, $Markdown_end_dash, $Markdown_inc ],
+            },
+      zyedidia => {
+         backtick => [
+            $Markdown_zyedidia_start_backtick, $Markdown_end_backtick,
+            $Markdown_inc
+            ],
+         tilde => [
+            $Markdown_zyedidia_start_tilde, $Markdown_end_tilde,
+            $Markdown_inc
+            ],
+         dash => [
+            $Markdown_zyedidia_start_dash, $Markdown_end_dash, $Markdown_inc
+            ],
             }
-        ) ;
+         }
+      ) ;
 
 my ( $doc_ext, $code_ext ) ;
 
 if ( $basename =~ /[^.]+\.(\w+)\.(\w+)$/ ) {
-    ( $code_ext, $doc_ext ) = ( $1, $2 ) ;
-    $comment_format = $Lang_cmt{ $code_ext } ;
-    $doctype        = $Doctypes{ $doc_ext } ;
+   ( $code_ext, $doc_ext ) = ( $1, $2 ) ;
+   $comment_format = $Lang_cmt{ $code_ext } ;
+   $doctype        = $Doctypes{ $doc_ext } ;
 } elsif ( $basename =~ /[^.]+\.(\w+)$/ ) {
-    ( $doc_ext ) = ( $1 ) ;
-    $doctype = $Doctypes{ $doc_ext } ;
+   ( $doc_ext ) = ( $1 ) ;
+   $doctype = $Doctypes{ $doc_ext } ;
 } else {
-    die "Err: could not parse filename" ;
-    }
+   die "Err: could not parse filename" ;
+   }
 
 ## overwriting with opts
 if ( $doctype_opt ) {
-    if ( exists $Doctypes{ $doctype_opt } ) {
-        $doctype = $Doctypes{ $doctype_opt } ;
-    } else {
-        die "Err: doctype dont exists" ;
-        }
-    }
+   if ( exists $Doctypes{ $doctype_opt } ) {
+      $doctype = $Doctypes{ $doctype_opt } ;
+   } else {
+      die "Err: doctype dont exists" ;
+      }
+   }
 
 $comment_format = $comment_opt if $comment_opt ;
 
-die "Err: could not fetch $comment_format" unless $comment_format ;
-die "Err: could not fetch $doctype"        unless $doctype ;
+die "Err: could not fetch $comment_format"             unless $comment_format ;
+die "Err: could not fetch doctype for ext '.$doc_ext'" unless $doctype ;
 
 sub find_flavor {
-    my ( $ln ) = @_ ;
-    my @res = () ;
-    my $rec ;
-    $rec = sub {
-        my ( $dt ) = @_ ;
+   my ( $ln ) = @_ ;
+   my @res = () ;
+   my $rec ;
+   $rec = sub {
+      my ( $dt ) = @_ ;
 
-        # TODO: could not 'return' from this sub with values
-        # last is not working either
-        return if @res ;
-        if ( ref $dt eq 'HASH' ) {
-            foreach my $key ( keys %$dt ) {
-                $rec->( $dt->{ $key } ) ;
-                }
-        } elsif ( ref $dt eq 'ARRAY' ) {
-            my ( $start, $end, $inc ) = @{ $dt } ;
-            if ( $ln =~ $start ) {
-
-                # TODO: could not 'return' from this sub
-                @res = ( $1, $start, $end, $inc ) ;
-                }
-        } else {
-            die "Err: invalid type" ;
+      # TODO: could not 'return' from this sub with values
+      # 'last' is not working either
+      return if @res ;
+      if ( ref $dt eq 'HASH' ) {
+         foreach my $key ( keys %$dt ) {
+            $rec->( $dt->{ $key } ) ;
             }
-        } ;
+      } elsif ( ref $dt eq 'ARRAY' ) {
+         my ( $start ) = @{ $dt } ;
+         if ( $ln =~ $start ) {
 
-    $rec->( $doctype ) ;
-    return @res ;
+            # TODO: could not 'return' from this sub
+            @res = ( $dt, $1 ) ;
+            }
+      } else {
+         die "Err: invalid type" ;
+         }
+      } ;
 
-    }
+   $rec->( $doctype ) ;
+   return @res ;
+
+   }
 
 open( my $fh, '<', $filename ) || die "Err: can not open file $filename" ;
 my @lines = <$fh> ;
@@ -184,79 +182,98 @@ close $fh ;
 
 my %tags ;
 my ( @codelines, @codeblock ) ;
-my ( $lnr,       $inblock ) ;
-my ( $start,     $end, $inc ) ;
+my ( $lnr,       $inblock, $inheader ) ;
+my ( $start,     $end,     $inc, $header ) ;
 
 my $i = 0 ;
 foreach my $ln ( @lines ) {
-    chomp $ln ;
-    $i++ ;
-    my @line = () ;
-    if ( $inblock ) {
-        if ( $ln =~ /$end/ ) {
-            push @codelines, join( "\n", @codeblock ) ;
-            @codeblock = () ;
+   chomp $ln ;
+   $i++ ;
+   my @line = () ;
+   if ( $inblock ) {
+      if ( $ln =~ /$end/ ) {
+         push @codelines, join( "\n", @codeblock ) ;
+         @codeblock = () ;
 
-            if ( exists $tags{ $inblock } ) {
-                my ( $blocklnr, @lines ) = @{ $tags{ $inblock } } ;
-                $tags{ $inblock } = [ $lnr, @lines, @codelines ] ;
-            } else {
-                $tags{ $inblock } = [ $lnr, @codelines ] ;
-                }
-            @codelines = () ;
-            undef $inblock ;
-        } elsif ( $ln =~ /$inc/ ) {
-            push @codelines, join( "\n", @codeblock ) ;
-            @codeblock = () ;
-
-            push @codelines, [ $i, $1 ] ;
-        } elsif ( $ln =~ /$start/ ) {
-            die "Err: premature start directirve" ;
-        } else {
-            push @codeblock, $ln ;
+         if ( exists $tags{ $inblock } ) {
+            my ( $blocklnr, @lines ) = @{ $tags{ $inblock } } ;
+            $tags{ $inblock } = [ $lnr, @lines, @codelines ] ;
+         } else {
+            $tags{ $inblock } = [ $lnr, @codelines ] ;
             }
-    } else {
-        if ( $start ) {
-            ( $inblock ) =
-                  ( $ln =~ /$start/ )
-                ? ( $1 )
-                : () ;
+         @codelines = () ;
+         undef $inblock ;
+      } elsif ( $ln =~ /$inc/ ) {
+         push @codelines, join( "\n", @codeblock ) ;
+         @codeblock = () ;
 
-            #die "Err: no start directive for ln $ln";
-        } else {
-            ( $inblock, $start, $end, $inc ) = find_flavor( $ln ) ;
+         push @codelines, [ $i, $1 ] ;
+      } elsif ( $ln =~ /$start/ ) {
+         die "Err: premature start directirve" ;
+      } else {
+         push @codeblock, $ln ;
+         }
+   } elsif ( $inheader ) {
+      if ( $start ) {
+         ( $inblock ) = ( $ln =~ /$start/ )
+            ? ( $inheader )
+            : die "Err: no start found" ;
+         undef $inheader ;
+      } else {
+         die "Err: no start pattern defined" ;
+         }
+   } else {
+      if ( $header ) {
+         ( $inheader ) = ( $ln =~ /$header/ ) ? ( $1 ) : () ;
+      } elsif ( $start ) {
+
+         ( $inblock ) = ( $ln =~ /$start/ ) ? ( $1 ) : () ;
+
+         #die "Err: no start directive for ln $ln";
+      } else {
+         my ($matchers, $capture) = find_flavor( $ln ) ;
+
+         if ( $matchers ) {
+            if(@$matchers == 4){
+               ( $header, $start, $end, $inc) = @$matchers ;
+               $inheader = $capture;
+            }else{
+               ($start, $end, $inc) = @$matchers ;
+               $inblock = $capture;
             }
-        $lnr = $i ;
-        }
-    }
+            }
+         }
+      $lnr = $i ;
+      }
+   }
 
-die "Err: could not parse file, found nothing" unless $start ;
+die "Err: no tags and therefore nothing for for tag '$extractor'"  unless $start ;
 
 my $resolve_tag ;
 $resolve_tag = sub {
-    my ( $tag ) = @_ ;
-    if ( exists $tags{ $tag } ) {
-        my ( $lnr, @block ) = @{ $tags{ $tag } } ;
-        my @resolved_block = ( sprintf( "$comment_format \n", $lnr ) ) ;
-        foreach my $blockln ( @block ) {
+   my ( $tag ) = @_ ;
+   if ( exists $tags{ $tag } ) {
+      my ( $lnr, @block ) = @{ $tags{ $tag } } ;
+      my @resolved_block = ( sprintf( "$comment_format \n", $lnr ) ) ;
+      foreach my $blockln ( @block ) {
 
-            if ( ref $blockln eq 'ARRAY' ) {
-                my ( $ref_lnr, $ref_tag ) = @$blockln ;
-                my ( @ref_block ) = $resolve_tag->( $ref_tag ) ;
-                push @resolved_block, @ref_block, "\n" ;
-            } else {
-                push @resolved_block, $blockln ;
-                }
+         if ( ref $blockln eq 'ARRAY' ) {
+            my ( $ref_lnr, $ref_tag ) = @$blockln ;
+            my ( @ref_block ) = $resolve_tag->( $ref_tag ) ;
+            push @resolved_block, @ref_block, "\n" ;
+         } else {
+            push @resolved_block, $blockln ;
             }
-        return @resolved_block ;
-    } else {
-        die "Err: cannot resolve tag $tag in tags" . Dumper %tags ;
-        }
-    } ;
+         }
+      return @resolved_block ;
+   } else {
+      die "Err: cannot resolve tag $tag in tags" . Dumper %tags ;
+      }
+   } ;
 
 #die ttt => %tags;
 
 foreach ( $resolve_tag->( $extractor ) ) {
-    print "$_" ;
-    }
+   print "$_" ;
+   }
 
