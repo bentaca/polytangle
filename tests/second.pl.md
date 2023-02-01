@@ -10,6 +10,6 @@ print ("this is a chunk");
 
 And another example
 
-```perl test.pl
+```perl second.pl
 <<chunk>>
 ```
