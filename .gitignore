@@ -10,6 +10,10 @@
 *_skip
 *.skip
 *.bak
+a.out
+out.*
+t.*
+test.*
 
 # Devel::Cover
 cover_db/

@@ -45,15 +45,15 @@ foreach my $cmt ( keys %Comments ) {
       }
    }
 
-our $Include_default = qr|^\s*<<(.+)>>\s*$| ;
+our $Include_common = qr|<<(.+)>>| ;
+our @Inc_variants = (qr|^\s*$Include_common\s*$| , 
+   qr|^#include\s+$Include_common\s*$|) ;
 
 our $Noweb_start = qr|^\s*<<(.+)>>=\s*$| ;
 our $Noweb_end   = qr|^\s*@\s*$| ;
-our $Noweb_inc   = $Include_default ;
 
 our $Babble_start  = qr|^\s*\#\+begin_src[\s\w]| ;
 our $Babble_end    = qr|^\s*\#\+end_src\b.*$| ;
-our $Babble_inc    = $Include_default ;
 our $Babble_header = qr,^\s*\#\+name\:\s*([\w_\.]+)\s*$, ;
 
 our $Markdown_fence_start_common   = qr|\w+\s+\#*([\w_\.]+)\s*$| ;
@@ -77,43 +77,38 @@ our $Markdown_end_backtick = qr|^\s*```\s*$| ;
 our $Markdown_end_tilde    = qr|^\s*~~~\s*$| ;
 our $Markdown_end_dash     = qr|^\s*---\s*$| ;
 
-our $Markdown_inc = $Include_default ;
 
 our %Doctypes = (
-   org => [ $Babble_header, $Babble_start, $Babble_end, $Babble_inc ],
-   nw  => [ $Noweb_start,  $Noweb_end,  $Noweb_inc ],
+   org => [ $Babble_header, $Babble_start, $Babble_end ],
+   nw  => [ $Noweb_start,  $Noweb_end ],
    md  => {
       attr => {
          backtick => [
             $Markdown_attr_start_backtick, $Markdown_end_backtick,
-            $Markdown_inc
             ],
          tilde =>
-            [ $Markdown_attr_start_tilde, $Markdown_end_tilde, $Markdown_inc ],
+            [ $Markdown_attr_start_tilde, $Markdown_end_tilde ],
          dash =>
-            [ $Markdown_attr_start_dash, $Markdown_end_dash, $Markdown_inc ],
+            [ $Markdown_attr_start_dash, $Markdown_end_dash ],
             },
       fence => {
          backtick => [
             $Markdown_fence_start_backtick, $Markdown_end_backtick,
-            $Markdown_inc
             ],
          tilde =>
-            [ $Markdown_fence_start_tilde, $Markdown_end_tilde, $Markdown_inc ],
+            [ $Markdown_fence_start_tilde, $Markdown_end_tilde ],
          dash =>
-            [ $Markdown_fence_start_dash, $Markdown_end_dash, $Markdown_inc ],
+            [ $Markdown_fence_start_dash, $Markdown_end_dash ],
             },
       zyedidia => {
          backtick => [
             $Markdown_zyedidia_start_backtick, $Markdown_end_backtick,
-            $Markdown_inc
             ],
          tilde => [
             $Markdown_zyedidia_start_tilde, $Markdown_end_tilde,
-            $Markdown_inc
             ],
          dash => [
-            $Markdown_zyedidia_start_dash, $Markdown_end_dash, $Markdown_inc
+            $Markdown_zyedidia_start_dash, $Markdown_end_dash
             ],
             }
          }
@@ -184,9 +179,35 @@ close $fh ;
 my %tags ;
 my ( @codelines, @codeblock ) ;
 my ( $lnr,       $inblock, $inheader ) ;
-my ( $start,     $end,     $inc, $header ) ;
+my ( $start,     $end,  $header ) ;
+my ($inc);
 
 my $i = 0 ;
+
+sub handle_includes {
+   my ($ln ) = @_;
+
+   my $handle = sub {
+      my ($match) = @_;
+      push @codelines, join( "\n", @codeblock ) ;
+      @codeblock = () ;
+      push @codelines, [ $i, $match ] ;
+   };
+
+   if($inc){
+      if ( $ln =~ /$inc/ ) {
+         $handle->($1);
+      }
+   }else{
+      foreach my $pat (@Inc_variants){
+         if ( $ln =~ /$pat/ ) {
+            $handle->($1);
+            $inc = $pat;
+         }
+      }
+   }
+}
+
 foreach my $ln ( @lines ) {
    chomp $ln ;
    $i++ ;
@@ -204,11 +225,8 @@ foreach my $ln ( @lines ) {
             }
          @codelines = () ;
          undef $inblock ;
-      } elsif ( $ln =~ /$inc/ ) {
-         push @codelines, join( "\n", @codeblock ) ;
-         @codeblock = () ;
-
-         push @codelines, [ $i, $1 ] ;
+      } elsif ( $ln =~ /$Include_common/ ) {
+         handle_includes ($ln);
       } elsif ( $ln =~ /$start/ ) {
          die "Err: premature start directirve" ;
       } else {
@@ -216,13 +234,13 @@ foreach my $ln ( @lines ) {
          }
    } elsif ( $inheader ) {
       if ( $start ) {
-         ( $inblock ) = ( $ln =~ /$start/ )
-            ? ( $inheader )
+         ( $inblock ) = ( $ln =~ /$start/ ) 
+            ? ( $inheader ) 
             : die "Err: no start found" ;
          undef $inheader ;
       } else {
          die "Err: no start pattern defined" ;
-         }
+      }
    } else {
       if ( $header ) {
          ( $inheader ) = ( $ln =~ /$header/ ) ? ( $1 ) : () ;
@@ -235,11 +253,11 @@ foreach my $ln ( @lines ) {
          my ($matchers, $capture) = find_flavor( $ln ) ;
 
          if ( $matchers ) {
-            if(@$matchers == 4){
-               ( $header, $start, $end, $inc) = @$matchers ;
+            if(@$matchers == 3){
+               ( $header, $start, $end) = @$matchers ;
                $inheader = $capture;
             }else{
-               ($start, $end, $inc) = @$matchers ;
+               ($start, $end) = @$matchers ;
                $inblock = $capture;
             }
             }
