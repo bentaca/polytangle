@@ -14,28 +14,28 @@ use Data::Dumper ;
 use File::Basename ;
 use Getopt::Long qw(GetOptions) ;
 
-my ( $_comment_opt, $_doctype_opt , $_proglang_opt) ;
+my ( $_comment_opt, $_doctype_opt, $_proglang_opt ) ;
 GetOptions(
-   'cmt'     => \$_comment_opt,
-   'doctype' => \$_doctype_opt,
+   'cmt'      => \$_comment_opt,
+   'doctype'  => \$_doctype_opt,
    'proglang' => \$_proglang_opt,
    ) ;
 
-my ($_filename, $_reference) = (@ARGV == 2)
+my ( $_filename, $_reference ) =
+   ( @ARGV == 2 )
    ? @ARGV
-   : die "usage: $USAGE"; 
+   : die "usage: $USAGE" ;
 
 my $_basename = basename( $_filename ) ;
 
 my %_comments = (
    "# line %s \"$_basename\"" => [ qw( pl) ],
    "# %s \"$_basename\""      => [ qw( ml mli) ],
-   '# %s'                    => [ qw( sh rb py ) ],
-   '(* %s *)'                => [ qw( sml ) ],
-   '// %s'                   => [ qw( d c cpp js re rei ) ],
-   '; %s'                    => [ qw( el lisp l lsp scm sc ss sch ) ]
+   '# %s'                     => [ qw( sh rb py ) ],
+   '(* %s *)'                 => [ qw( sml ) ],
+   '// %s'                    => [ qw( d c cpp js re rei ) ],
+   '; %s'                     => [ qw( el lisp l lsp scm sc ss sch ) ]
    ) ;
-
 
 my $_include_common = qr|<<(.+)>>| ;
 my @_include_variants =
@@ -58,12 +58,10 @@ my $_mkd_attr_start_backtick = qr|^\s*```$_mkd_attr_start_common| ;
 my $_mkd_attr_start_tilde    = qr|^\s*~~~$_mkd_attr_start_common| ;
 my $_mkd_attr_start_dash     = qr|^\s*---$_mkd_attr_start_common| ;
 
-my $_mkd_zyedidia_start_common = qr|\s+\#*([\w_\.]+)\s*$| ;
-my $_mkd_zyedidia_start_backtick =
-   qr|^\s*```$_mkd_zyedidia_start_common| ;
-my $_mkd_zyedidia_start_tilde =
-   qr|^\s*~~~$_mkd_zyedidia_start_common| ;
-my $_mkd_zyedidia_start_dash = qr|^\s*---$_mkd_zyedidia_start_common| ;
+my $_mkd_zyedidia_start_common   = qr|\s+\#*([\w_\.]+)\s*$| ;
+my $_mkd_zyedidia_start_backtick = qr|^\s*```$_mkd_zyedidia_start_common| ;
+my $_mkd_zyedidia_start_tilde    = qr|^\s*~~~$_mkd_zyedidia_start_common| ;
+my $_mkd_zyedidia_start_dash     = qr|^\s*---$_mkd_zyedidia_start_common| ;
 
 my $_mkd_end_backtick = qr|^\s*```\s*$| ;
 my $_mkd_end_tilde    = qr|^\s*~~~\s*$| ;
@@ -79,21 +77,17 @@ my %_tangle_patterns = (
          dash     => [ $_mkd_attr_start_dash,     $_mkd_end_dash ],
          },
       fence => {
-         backtick =>
-            [ $_mkd_fence_start_backtick, $_mkd_end_backtick, ],
-         tilde => [ $_mkd_fence_start_tilde, $_mkd_end_tilde ],
-         dash  => [ $_mkd_fence_start_dash,  $_mkd_end_dash ],
+         backtick => [ $_mkd_fence_start_backtick, $_mkd_end_backtick, ],
+         tilde    => [ $_mkd_fence_start_tilde,    $_mkd_end_tilde ],
+         dash     => [ $_mkd_fence_start_dash,     $_mkd_end_dash ],
          },
       zyedidia => {
-         backtick =>
-            [ $_mkd_zyedidia_start_backtick, $_mkd_end_backtick, ],
-         tilde => [ $_mkd_zyedidia_start_tilde, $_mkd_end_tilde, ],
-         dash  => [ $_mkd_zyedidia_start_dash,  $_mkd_end_dash ],
+         backtick => [ $_mkd_zyedidia_start_backtick, $_mkd_end_backtick, ],
+         tilde    => [ $_mkd_zyedidia_start_tilde,    $_mkd_end_tilde, ],
+         dash     => [ $_mkd_zyedidia_start_dash,     $_mkd_end_dash ],
          }
          }
       ) ;
-
-
 
 sub find_flavor {
    my ( $doc_patterns, $ln ) = @_ ;
@@ -126,18 +120,16 @@ sub find_flavor {
 
    }
 
-
-
-sub create_reference_index { 
-   my ($doc_patterns, $lines) = @_;
+sub create_reference_index {
+   my ( $doc_patterns, $lines ) = @_ ;
    my %tags ;
    my ( @codelines, @codeblock ) ;
-   my (      $inblock, $inheader ) ;
-   my ( $start_rex,     $end_rex,     $header_rex , $inc_rex ) ;
+   my ( $inblock,   $inheader ) ;
+   my ( $start_rex, $end_rex, $header_rex, $inc_rex ) ;
 
-   my ($i, $lnr) = (0, 0);
+   my ( $i, $lnr ) = ( 0, 0 ) ;
 
-   my $handle_includes  = sub{
+   my $handle_includes = sub {
       my ( $ln ) = @_ ;
 
       my $handle = sub {
@@ -159,7 +151,7 @@ sub create_reference_index {
                }
             }
          }
-      };
+      } ;
 
    foreach my $ln ( @$lines ) {
       chomp $ln ;
@@ -201,7 +193,7 @@ sub create_reference_index {
          } elsif ( $start_rex ) {
             ( $inblock ) = ( $ln =~ /$start_rex/ ) ? ( $1 ) : () ;
          } else {
-            my ( $matchers, $capture ) = find_flavor( $doc_patterns,  $ln ) ;
+            my ( $matchers, $capture ) = find_flavor( $doc_patterns, $ln ) ;
 
             if ( $matchers ) {
                if ( @$matchers == 3 ) {
@@ -216,14 +208,14 @@ sub create_reference_index {
          $lnr = $i ;
          }
       }
-      return \%tags;
+   return \%tags ;
    }
 
-
 sub resolve_ref {
-   my ($index, $ref,  $comment_format) = @_;
+   my ( $index, $ref, $comment_format ) = @_ ;
 
-   my $loop ; $loop = sub {
+   my $loop ;
+   $loop = sub {
       my ( $tag ) = @_ ;
       if ( exists $index->{ $tag } ) {
          my ( $lnr, @block ) = @{ $index->{ $tag } } ;
@@ -239,79 +231,78 @@ sub resolve_ref {
             }
          return @resolved_block ;
       } else {
-         die "Err: cannot resolve tag $tag in index"; 
+         die "Err: cannot resolve tag $tag in index" ;
          }
       } ;
 
-      return $loop->($ref);
-}
-
+   return $loop->( $ref ) ;
+   }
 
 sub hash_upsidedown {
-   my ($hash) = @_;
-   
+   my ( $hash ) = @_ ;
+
    my %lang_cmt = () ;
    foreach my $cmt ( keys %$hash ) {
       my $langs = $hash->{ $cmt } ;
-   
+
       foreach my $lang ( @$langs ) {
          $lang_cmt{ $lang } = $cmt ;
+         }
       }
+
+   return \%lang_cmt ;
    }
 
-   return \%lang_cmt;
-}
-
-
 sub main {
-   my ($lang_cmt) = hash_upsidedown (\%_comments);
+   my ( $lang_cmt ) = hash_upsidedown( \%_comments ) ;
 
-   my ( $code_type, $doc_type);
+   my ( $code_type, $doc_type ) ;
 
    if ( $_doctype_opt ) {
-      $doc_type = $_doctype_opt;
-   }else{
+      $doc_type = $_doctype_opt ;
+   } else {
       if ( $_basename =~ /[^.]+\.(\w+)\.(\w+)$/ ) {
          ( $code_type, $doc_type ) = ( $1, $2 ) ;
       } elsif ( $_basename =~ /[^.]+\.(\w+)$/ ) {
          ( $doc_type ) = ( $1 ) ;
+         }
       }
-   }
 
    if ( $_proglang_opt ) {
-      $code_type = $_doctype_opt;
-   }else{
+      $code_type = $_doctype_opt ;
+   } else {
       if ( $_basename =~ /[^.]+\.(\w+)\.(\w+)$/ ) {
-         (  $code_type ) = ( $1 ) ;
+         ( $code_type ) = ( $1 ) ;
+         }
       }
-   }
 
-
-   my ($doc_patterns) = ( exists $_tangle_patterns{ $doc_type } ) 
+   my ( $doc_patterns ) =
+      ( exists $_tangle_patterns{ $doc_type } )
       ? $_tangle_patterns{ $doc_type }
       : die "Err: doctype dont exists" ;
 
-   my ($comment_format) = ( exists $lang_cmt->{ $code_type } ) 
-      ? $lang_cmt->{ $code_type } 
+   my ( $comment_format ) =
+      ( exists $lang_cmt->{ $code_type } )
+      ? $lang_cmt->{ $code_type }
       : die "Err: codetype dont exists" ;
 
-
-   die "Err: could not fetch $comment_format"             unless $comment_format ;
-   die "Err: could not fetch doc_patterns for ext '.$doc_type'" unless $doc_patterns ;
+   die "Err: could not fetch $comment_format" unless $comment_format ;
+   die "Err: could not fetch doc_patterns for ext '.$doc_type'"
+      unless $doc_patterns ;
 
    open( my $fh, '<', $_filename ) || die "Err: can not open file $_filename" ;
    my @lines = <$fh> ;
    close $fh ;
 
-   my ($index) =create_reference_index ($doc_patterns, \@lines);
-   die "Err: no code block in this documents" unless $index;
+   my ( $index ) = create_reference_index( $doc_patterns, \@lines ) ;
+   die "Err: no code block in this documents" unless $index ;
 
    #my ($tags, $comment_format, $ref) = @_;
-   foreach ( resolve_ref($index,  $_reference, $comment_format ) ) {
+   foreach ( resolve_ref( $index, $_reference, $comment_format ) ) {
       print "$_" ;
-   
-   }
-}
 
-main;
+      }
+   }
+
+main ;
 
