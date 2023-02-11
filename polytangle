@@ -5,6 +5,82 @@
 # Use of this source code is governed by an MIT-style license
 # that can be found in the LICENSE file or at
 # https://opensource.org/licenses/MIT.
+#
+# notes:
+#
+# Noweb
+# =====
+#
+# <<mycode>>=
+# let foo = 3;
+# @
+# <<myfile.ml>>=
+# <<mycode>>
+# @
+#
+# Org Mode
+# ========
+#
+# Titled Blocks
+# -----------
+#
+#  title: ref / ref.lang
+#  begin: (lang)
+#
+# #+name: <name>
+# #+begin_src <language> <switches> <header arguments>
+#  my $code is "nice";
+#  <<insert>>
+#+end_src
+#
+#
+# Inline Blocks
+# ------
+# begin: lang, ref/ref.lang
+#
+#  #+begin_src python :noweb-ref literate-main-imports
+#
+# Markdown Code Blocks
+# =====================
+#
+#
+# Classic Titled Code Blocks
+# ------------------------
+#
+#  title: ref / ref.lang
+#  begin: lang
+#
+#  cmd: `pandoc --from=markdown+fenced_code_blocks t.md >t.html`
+#
+#  eg:
+#     ## User Data {#userdata.json}
+#     This is some json
+#     ```json
+#     { "firstName": "John", }
+#     ```
+#
+# Inline Code Blocks
+# ----------------------
+#  title: -
+#  begin: ref, lang
+#
+#  cmd: `pandoc --from=markdown+fenced_code_attributes`
+#
+#  eg:
+#     ``` {#mycode.pl .haskell .numberLines startFrom="100"}
+#     print("hey");
+#     ```
+#
+#     :tangle test/compiler/ferret.clj
+#     :noweb-ref clojure-unit-tests
+#
+# TODO (default header in org mode): #+PROPERTY: header-args :tangle .emacs
+#
+# Notes
+# ----
+#
+# The C Preprocessor Way
+# #include "declarations.h"
 
 our $USAGE = 'file tag' ;
 
@@ -14,142 +90,331 @@ use Data::Dumper ;
 use File::Basename ;
 use Getopt::Long qw(GetOptions) ;
 
-my ( $_comment_opt, $_doctype_opt, $_proglang_opt ) ;
+my ( $_comment_opt, $_docsyntax_opt, $_proglang_opt, $_quiet ) ;
 GetOptions(
-   'cmt'      => \$_comment_opt,
-   'doctype'  => \$_doctype_opt,
-   'proglang' => \$_proglang_opt,
+   'cmt'        => \$_comment_opt,
+   'doc-syntax' => \$_docsyntax_opt,
+   'proglang'   => \$_proglang_opt,
+   'quiet'      => \$_quiet,
    ) ;
 
-my ( $_filename, $_reference ) =
-   ( @ARGV == 2 )
-   ? @ARGV
-   : die "usage: $USAGE" ;
-
-my $_basename = basename( $_filename ) ;
-
-my %_comments = (
-   "# line %s \"$_basename\"" => [ qw( pl) ],
-   "# %s \"$_basename\""      => [ qw( ml mli) ],
-   '# %s'                     => [ qw( sh rb py ) ],
-   '(* %s *)'                 => [ qw( sml ) ],
-   '// %s'                    => [ qw( d c cpp js re rei ) ],
-   '; %s'                     => [ qw( el lisp l lsp scm sc ss sch ) ]
+my %_doc_filetypes = (
+   noweb    => [ qw( .nw .noweb ) ],
+   markdown => [ qw( .md .mkd .markdown ) ],
+   org      => [ qw(. org ) ],
    ) ;
 
-my $_include_common = qr|<<(.+)>>| ;
-my @_include_variants =
-   ( qr|^\s*$_include_common\s*$|, qr|^#include\s+$_include_common\s*$| ) ;
+my %_code_filetypes = (
+   Cucumber     => [ '.feature' ],
+   abap         => [ '.abap' ],
+   ada          => [ '.adb',      '.ads', '.ada' ],
+   ahk          => [ '.ahk',      '.ahkl' ],
+   apacheconf   => [ '.htaccess', 'apache.conf', 'apache2.conf' ],
+   applescript  => [ '.applescript' ],
+   as           => [ '.as' ],
+   as3          => [ '.as' ],
+   asy          => [ '.asy' ],
+   bash         => [ '.sh',  '.ksh', '.bash' ],
+   bat          => [ '.bat', '.cmd' ],
+   befunge      => [ '.befunge' ],
+   blitzmax     => [ '.bmx' ],
+   boo          => [ '.boo' ],
+   brainfuck    => [ '.bf',    '.b' ],
+   c            => [ '.c',     '.h' ],
+   cfm          => [ '.cfm',   '.cfml', '.cfc' ],
+   cheetah      => [ '.tmpl',  '.spt' ],
+   lisp         => [ '.cl',    '.lisp', '.el' ],
+   clojure      => [ '.clj',   '.cljs' ],
+   cmake        => [ '.cmake', 'CMakeLists.txt' ],
+   coffeescript => [ '.coffee' ],
+   console      => [ '.sh-session' ],
+   control      => [ 'control' ],
+   cpp          =>
+      [ '.cpp', '.hpp', '.c++', '.h++', '.cc', '.hh', '.cxx', '.hxx', '.pde' ],
+   csharp  => [ '.cs' ],
+   css     => [ '.css' ],
+   cython  => [ '.pyx', '.pxd', '.pxi' ],
+   d       => [ '.d',   '.di' ],
+   delphi  => [ '.pas' ],
+   diff    => [ '.diff',   '.patch' ],
+   dpatch  => [ '.dpatch', '.darcspatch' ],
+   duel    => [ '.duel',   '.jbst' ],
+   dylan   => [ '.dylan',  '.dyl' ],
+   erb     => [ '.erb' ],
+   erl     => [ '.erl-sh' ],
+   erlang  => [ '.erl', '.hrl' ],
+   evoque  => [ '.evoque' ],
+   factor  => [ '.factor' ],
+   felix   => [ '.flx', '.flxh' ],
+   fortran => [ '.f',   '.f90' ],
+   gas     => [ '.s',   '.S' ],
+   genshi  => [ '.kid' ],
+   glsl    => [ '.vert', '.frag', '.geo' ],
+   gnuplot => [ '.plot', '.plt' ],
+   go      => [ '.go' ],
+   groff   => [ '.=>[1234567], ', '.man' ],
+   haml    => [ '.haml' ],
+   haskell => [ '.hs' ],
+   html    => [ '.html', '.htm', '.xhtml', '.xslt' ],
+   hx      => [ '.hx' ],
+   hybris  => [ '.hy',  '.hyb' ],
+   ini     => [ '.ini', '.cfg' ],
+   io      => [ '.io' ],
+   ioke    => [ '.ik' ],
+   irc     => [ '.weechatlog' ],
+   jade    => [ '.jade' ],
+   java    => [ '.java' ],
+   js      => [ '.js' ],
+   jsp     => [ '.jsp' ],
+   lhs     => [ '.lhs' ],
+   llvm    => [ '.ll' ],
+   logtalk => [ '.lgt' ],
+   lua     => [ '.lua', '.wlua' ],
+   make    =>
+      [ '.mk', '.mak', 'Makefile', 'makefile', 'Makefile.', 'GNUmakefile' ],
+   mako       => [ '.mao' ],
+   maql       => [ '.maql' ],
+   mason      => [ '.mhtml', '.mc', '.mi', 'autohandler', 'dhandler' ],
+   markdown   => [ '.md' ],
+   modelica   => [ '.mo' ],
+   modula2    => [ '.def', '.mod' ],
+   moocode    => [ '.moo' ],
+   mupad      => [ '.mu' ],
+   mxml       => [ '.mxml' ],
+   myghty     => [ '.myt', 'autodelegate' ],
+   nasm       => [ '.asm', '.ASM' ],
+   newspeak   => [ '.ns2' ],
+   objdump    => [ '.objdump' ],
+   objectivec => [ '.m' ],
+   objectivej => [ '.j' ],
+   standardml => [ '.sml' ],
+   reasonml   => [ '.re', '.res' ],
+   ocaml      => [ '.ml', '.mli', '.mll', '.mly' ],
+   ooc        => [ '.ooc' ],
+   perl       => [ '.pl',     '.pm' ],
+   php        => [ '.php',    '.php=>[345], ' ],
+   postscript => [ '.ps',     '.eps' ],
+   pot        => [ '.pot',    '.po' ],
+   pov        => [ '.pov',    '.inc' ],
+   prolog     => [ '.prolog', '.pro' ],
+   properties => [ '.properties' ],
+   protobuf   => [ '.proto' ],
+   py3tb      => [ '.py3tb' ],
+   pytb       => [ '.pytb' ],
+   python     => [ '.py', '.pyw', '.sc', 'SConstruct', 'SConscript', '.tac' ],
+   r          => [ '.R' ],
+   rb => [ '.rb', '.rbw', 'Rakefile', '.rake', '.gemspec', '.rbx', '.duby' ],
+   rconsole    => [ '.Rout' ],
+   rebol       => [ '.r', '.r3' ],
+   redcode     => [ '.cw' ],
+   rhtml       => [ '.rhtml' ],
+   rst         => [ '.rst', '.rest' ],
+   sass        => [ '.sass' ],
+   scala       => [ '.scala' ],
+   scaml       => [ '.scaml' ],
+   scheme      => [ '.scm' ],
+   scss        => [ '.scss' ],
+   smalltalk   => [ '.st' ],
+   smarty      => [ '.tpl' ],
+   sourceslist => [ 'sources.list' ],
+   splus       => [ '.S', '.R' ],
+   sql         => [ '.sql' ],
+   sqlite3     => [ '.sqlite3-console' ],
+   squidconf   => [ 'squid.conf' ],
+   ssp         => [ '.ssp' ],
+   tcl         => [ '.tcl' ],
+   tcsh        => [ '.tcsh', '.csh' ],
+   tex         => [ '.tex',  '.aux', '.toc' ],
+   text        => [ '.txt' ],
+   v           => [ '.v',    '.sv' ],
+   vala        => [ '.vala', '.vapi' ],
+   vbnet       => [ '.vb',   '.bas' ],
+   velocity    => [ '.vm',   '.fhtml' ],
+   vim         => [ '.vim',  '.vimrc' ],
+   xml         => [ '.xml',  '.xsl', '.rss', '.xslt', '.xsd', '.wsdl' ],
+   xquery      => [ '.xqy',  '.xquery' ],
+   xslt        => [ '.xsl',  '.xslt' ],
+   yaml        => [ '.yaml', '.yml' ]
+   ) ;
 
-my $_noweb_start = qr|^\s*<<(.+)>>=\s*$| ;
-my $_noweb_end   = qr|^\s*@\s*$| ;
+my %_comment_formats = (
+   '(* %s *)' => [ qw( standardml ocaml) ],
+   '# %s'     => [ qw( perl text make  shell ruby python ) ],
+   '// %s'    => [ qw( dlang cpp javascript  reasonml ) ],
+   '; %s'     => [ qw( lisp scheme ) ],
+   ) ;
+my %_linedir_formats = (
+   '# %d "%s"'         => [ qw( ocaml) ],
+   '#line %d "%s"'     => [ qw( cpp perl text make shell ruby python ) ],
+   '(*line %d "%s" *)' => [ qw( standardml ) ],
+   '//line %d "%s"'    => [ qw( dlang javascript  reasonml  ) ],
+   ';line %d "%s"'     => [ qw( lisp scheme clojure  ) ],
+   ) ;
 
-my $_babble_start  = qr|^\s*\#\+begin_src[\s\w]| ;
-my $_babble_end    = qr|^\s*\#\+end_src\b.*$| ;
-my $_babble_header = qr,^\s*\#\+name\:\s*([\w_\.]+)\s*$, ;
+# common patterns for references and syntaxes
+#  syntax
+my $match_sytx          = qr,[\-\w]+, ;
+my $capture_sytx        = qr,($match_sytx), ;
+my $capture_sytx_ws     = qr,\s*($match_sytx)\s*, ;
+my $capture_sytx_opt_ws = qr,\s*($match_sytx)*\s*, ;
 
-my $_mkd_fence_start_common   = qr|\w+\s+\#*([\w_\.]+)\s*$| ;
-my $_mkd_fence_start_backtick = qr|^\s*```$_mkd_fence_start_common| ;
-my $_mkd_fence_start_tilde    = qr|^\s*~~~$_mkd_fence_start_common| ;
-my $_mkd_fence_start_dash     = qr|^\s*---$_mkd_fence_start_common| ;
+# references
+my $match_ref      = qr,[\.\-\w]+, ;
+my $capture_ref    = qr,($match_ref), ;
+my $capture_ref_ws = qr,\s*($match_ref)\s*, ;
+my $capture_ref_id = qr,\s*(\#$match_ref)\s*, ;
 
-my $_mkd_attr_start_common   = qr|\s*\{\s*\#([\w_\.]+)[\s}]| ;
-my $_mkd_attr_start_backtick = qr|^\s*```$_mkd_attr_start_common| ;
-my $_mkd_attr_start_tilde    = qr|^\s*~~~$_mkd_attr_start_common| ;
-my $_mkd_attr_start_dash     = qr|^\s*---$_mkd_attr_start_common| ;
+### including
+# <<ref>>
+# #include <<ref>>
+# @{ref}
+#
+my $_inc_noweb     = qr,\<\<$capture_ref_ws\>\>, ;
+my $_inc_noweb_cpp = qr,\#include\s+$_inc_noweb, ;
+my $_inc_atcurly   = qr,\@\{$capture_ref_ws\}, ;
 
-my $_mkd_zyedidia_start_common   = qr|\s+\#*([\w_\.]+)\s*$| ;
-my $_mkd_zyedidia_start_backtick = qr|^\s*```$_mkd_zyedidia_start_common| ;
-my $_mkd_zyedidia_start_tilde    = qr|^\s*~~~$_mkd_zyedidia_start_common| ;
-my $_mkd_zyedidia_start_dash     = qr|^\s*---$_mkd_zyedidia_start_common| ;
+## Noweb
+my $_nw_begin_refname     = qr|^\s*(<<)$capture_ref>>=\s*$| ;
+my $_nw_begin_lookalike   = qr,^\s*<<, ;
+my $_nw_include_lookalike = qr,^\s*<<, ;
+my $_nw_include           = qr,^\s*$_inc_noweb\s*$, ;
 
-my $_mkd_end_backtick = qr|^\s*```\s*$| ;
-my $_mkd_end_tilde    = qr|^\s*~~~\s*$| ;
-my $_mkd_end_dash     = qr|^\s*---\s*$| ;
+## Orgmode
+my $_org_capture_begin = qr,\s*(\#\+begin_src)\s*, ;
+my $_org_title_refname = qr,^\s*\#\+name\:$capture_ref_ws, ;    # $1: title
+my $_org_begin_syntax =
+   qr,^$_org_capture_begin\s$capture_sytx_opt_ws, ;             # $1:lang
+my $_org_begin_syntax_refname =
+   qr,^$_org_capture_begin\s$capture_sytx_opt_ws.*(?<=\:tangle)\s*$capture_ref_ws.*$,
+   ;
+my $_org_begin_bare = qr,^$_org_capture_begin$, ;
 
-my %_tangle_patterns = (
-   org => [ $_babble_header, $_babble_start, $_babble_end ],
-   nw  => [ $_noweb_start,   $_noweb_end ],
-   md  => {
-      attr => {
-         backtick => [ $_mkd_attr_start_backtick, $_mkd_end_backtick, ],
-         tilde    => [ $_mkd_attr_start_tilde,    $_mkd_end_tilde ],
-         dash     => [ $_mkd_attr_start_dash,     $_mkd_end_dash ],
-         },
-      fence => {
-         backtick => [ $_mkd_fence_start_backtick, $_mkd_end_backtick, ],
-         tilde    => [ $_mkd_fence_start_tilde,    $_mkd_end_tilde ],
-         dash     => [ $_mkd_fence_start_dash,     $_mkd_end_dash ],
-         },
-      zyedidia => {
-         backtick => [ $_mkd_zyedidia_start_backtick, $_mkd_end_backtick, ],
-         tilde    => [ $_mkd_zyedidia_start_tilde,    $_mkd_end_tilde, ],
-         dash     => [ $_mkd_zyedidia_start_dash,     $_mkd_end_dash ],
-         }
-         }
+my $_org_begin_lookalike   = qr,^\s*\#\+begin_src, ;
+my $_org_include_lookalike = qr,^\s<<, ;
+my $_org_include           = $_nw_include ;
+
+## lookalikes
+
+# # Markdown
+# markdown title with reference
+#
+my $_mkd_capture_ref_curly = qr,\s*\{\s*\#$capture_ref\s*\}\s*, ;
+my $_mkd_title_refname     = qr,^\s*\#+\s+.+$_mkd_capture_ref_curly.*$, ;
+
+# markdown fence
+my $_mkd_capture_fence    = qr,(?|(```)`*|(~~~)~*), ;
+my $_mkd_capture_fence_ws = qr,\s*$_mkd_capture_fence\s*, ;
+my $_mkd_begin_syntax     = qr,^$_mkd_capture_fence$capture_sytx_opt_ws$, ;
+
+my $_mkd_begin_lookalike = qr,^\s*(?:```+|~~~+)[^\~\`]+, ;
+
+my $_mkd_include_lookalike = qr,^\s*(?:<<|#incl|\@\{.+\}), ;
+my $_mkd_include = qr,^\s*(?|$_inc_noweb|$_inc_noweb_cpp|$_inc_atcurly)\s*$, ;
+
+my $_mkd_begin_bare = qr,^$_mkd_capture_fence_ws$, ;
+
+my $_mkd_begin_syntax_refname =
+   qr,^$_mkd_capture_fence$capture_sytx_ws$_mkd_capture_ref_curly, ;
+
+my %_tangle_regexes = (
+   markdown => {
+      'begin-syntax-refname' => $_mkd_begin_syntax_refname,
+      'title-refname'        => $_mkd_title_refname,
+      'begin-syntax'         => $_mkd_begin_syntax,
+      'begin-lookalike'      => $_mkd_begin_lookalike,
+      'include-lookalike'    => $_mkd_include_lookalike,
+      'include'              => $_mkd_include,
+      'begin-bare'           => $_mkd_begin_bare,
+
+      },
+   orgmode => {
+      'begin-syntax-refname' => $_org_begin_syntax_refname,
+      'title-refname'        => $_org_title_refname,
+      'begin-syntax'         => $_org_begin_syntax,
+      'begin-lookalike'      => $_org_begin_lookalike,
+      'include-lookalike'    => $_org_include_lookalike,
+      'include'              => $_org_include,
+      'begin-bare'           => $_org_begin_bare,
+      },
+   noweb => {
+      'begin-refname'     => $_nw_begin_refname,
+      'begin-lookalike'   => $_nw_begin_lookalike,
+      'include-lookalike' => $_nw_include_lookalike,
+      'include'           => $_nw_include,
+      }
       ) ;
 
-sub find_flavor {
-   my ( $doc_patterns, $ln ) = @_ ;
-   my @res = () ;
-   my $rec ;
-   $rec = sub {
-      my ( $docpat ) = @_ ;
+my %_end_code_mark = (
+   '#+begin_src' => qr|\s*\#\+end_src\s*$|,
+   '~~~'         => qr|^\s*~~~+\s*$|,
+   '```'         => qr|^\s*```+\s*$|,
+   '<<'          => qr|^\s*\@\s*$|,
+   ) ;
 
-      # TODO: could not 'return' from this sub with values
-      # 'last' is not working either
-      return if @res ;
-      if ( ref $docpat eq 'HASH' ) {
-         foreach my $key ( keys %$docpat ) {
-            $rec->( $docpat->{ $key } ) ;
-            }
-      } elsif ( ref $docpat eq 'ARRAY' ) {
-         my ( $_start_rex ) = @{ $docpat } ;
-         if ( $ln =~ $_start_rex ) {
-
-            # TODO: could not 'return' from this sub
-            @res = ( $docpat, $1 ) ;
-            }
+sub find_key {
+   my ( $dict, $key, $errmsg ) = @_ ;
+   if ( exists $dict->{ $key } ) {
+      return $dict->{ $key } ;
+   } else {
+      if ( $errmsg ) {
+         die $errmsg ;
       } else {
-         die "Err: invalid type" ;
+         return undef ;
          }
-      } ;
-
-   $rec->( $doc_patterns ) ;
-   return @res ;
+      }
 
    }
 
+sub hash_reverse {
+   my ( $hash ) = @_ ;
+
+   my %new_hash = () ;
+   foreach my $key ( keys %$hash ) {
+      my $val = $hash->{ $key } ;
+
+      if ( ref $val eq 'ARRAY' ) {
+         foreach my $item ( @$val ) {
+            $new_hash{ $item } = $key ;
+            }
+         }
+      }
+
+   return \%new_hash ;
+   }
+
 sub create_reference_index {
-   my ( $doc_patterns, $lines ) = @_ ;
-   my %tags ;
-   my ( @codelines, @codeblock ) ;
-   my ( $inblock,   $inheader ) ;
-   my ( $start_rex, $end_rex, $header_rex, $inc_rex ) ;
+   my ( $lines, $rx ) = @_ ;
 
-   my ( $i, $lnr ) = ( 0, 0 ) ;
+   my ( %index, %includes ) ;
 
-   my $handle_includes = sub {
-      my ( $ln ) = @_ ;
+   my ( $title_rx )                = find_key( $rx, 'title-refname' ) ;
+   my ( $begin_syntax_refname_rx ) = find_key( $rx, 'begin-syntax-refname' ) ;
+   my ( $begin_syntax_rx )         = find_key( $rx, 'begin-syntax' ) ;
+   my ( $begin_refname_rx )        = find_key( $rx, 'begin-refname' ) ;
+   my ( $begin_bare_rx )           = find_key( $rx, 'begin-bare' ) ;
 
-      my $handle = sub {
-         my ( $match ) = @_ ;
-         push @codelines, join( "\n", @codeblock ) ;
-         @codeblock = () ;
-         push @codelines, [ $i, $match ] ;
+   my ( $begin_lookalike_rx )   = find_key( $rx, 'begin-lookalike' ) ;
+   my ( $include_lookalike_rx ) = find_key( $rx, 'include-lookalike' ) ;
+   my ( $include_rx )           = find_key( $rx, 'include' ) ;
+
+   # states
+   my ( @codeblock, @codelines ) ;
+   my ( $incode,    $intitle, $end ) ;
+   my ( $i,         $lnr ) = ( 0, 0 ) ;
+
+   my $set_fence = sub {
+      my ( $leader, $refname, $syntax ) = @_ ;
+      $incode = [ $refname, $syntax ] ;
+      ( $end ) =
+         find_key( \%_end_code_mark, $leader,
+         "Err: could not find end marker" ) ;
          } ;
 
-      if ( $inc_rex ) {
-         if ( $ln =~ /$inc_rex/ ) {
-            $handle->( $1 ) ;
-            }
-      } else {
-         foreach my $pat ( @_include_variants ) {
-            if ( $ln =~ /$pat/ ) {
-               $handle->( $1 ) ;
-               $inc_rex = $pat ;
-               }
-            }
+   my $push_codeblock = sub {
+      my ( $type, $syntax ) = @_ ;
+      if ( @codelines ) {
+         push @codeblock, [ $type => $lnr, join( "\n", @codelines ), $syntax ] ;
+         @codelines = () ;
          }
       } ;
 
@@ -157,152 +422,239 @@ sub create_reference_index {
       chomp $ln ;
       $i++ ;
       my @line = () ;
-      if ( $inblock ) {
-         if ( $ln =~ /$end_rex/ ) {
-            push @codelines, join( "\n", @codeblock ) ;
-            @codeblock = () ;
+      if ( $incode ) {    # Inside a Codeblock
+         if ( $ln =~ /$end/ ) {
+            my ( $refname, $syntax ) = @$incode ;
+            $push_codeblock->( txt => $syntax ) ;
 
-            if ( exists $tags{ $inblock } ) {
-               my ( $blocklnr, @lines ) = @{ $tags{ $inblock } } ;
-               $tags{ $inblock } = [ $lnr, @lines, @codelines ] ;
+            # update codeblock
+            if ( exists $index{ $refname } ) {
+               my ( $blocksyntax, @existing_blocks ) = @{ $index{ $refname } } ;
+               push @existing_blocks, @codeblock ;
+               $index{ $refname } = [ $blocksyntax, @existing_blocks ] ;
             } else {
-               $tags{ $inblock } = [ $lnr, @codelines ] ;
+               $index{ $refname } = [ $syntax, @codeblock ] ;
                }
-            @codelines = () ;
-            undef $inblock ;
-         } elsif ( $ln =~ /$_include_common/ ) {
-            $handle_includes->( $ln ) ;
-         } elsif ( $ln =~ /$start_rex/ ) {
-            die "Err: premature start directirve" ;
-         } else {
-            push @codeblock, $ln ;
-            }
-      } elsif ( $inheader ) {
-         if ( $start_rex ) {
-            ( $inblock ) =
-                 ( $ln =~ /$start_rex/ )
-               ? ( $inheader )
-               : die "Err: no start found" ;
-            undef $inheader ;
-         } else {
-            die "Err: no start pattern defined" ;
-            }
-      } else {
-         if ( $header_rex ) {
-            ( $inheader ) = ( $ln =~ /$header_rex/ ) ? ( $1 ) : () ;
-         } elsif ( $start_rex ) {
-            ( $inblock ) = ( $ln =~ /$start_rex/ ) ? ( $1 ) : () ;
-         } else {
-            my ( $matchers, $capture ) = find_flavor( $doc_patterns, $ln ) ;
+            ( @codeblock ) = () ;
 
-            if ( $matchers ) {
-               if ( @$matchers == 3 ) {
-                  ( $header_rex, $start_rex, $end_rex ) = @$matchers ;
-                  $inheader = $capture ;
-               } else {
-                  ( $start_rex, $end_rex ) = @$matchers ;
-                  $inblock = $capture ;
+            ( $incode, $intitle, $end ) = () ;
+
+         } elsif ( $ln =~ /$include_lookalike_rx/ ) {
+            my ( $inc_name ) = ( $ln =~ /$include_rx/ ) ;
+            if ( $inc_name ) {
+               $push_codeblock->( 'txt' ) ;
+               push @codeblock, [ ref => $i, $inc_name ] ;
+               $includes{ $inc_name } = 1 ;
+               $lnr = $i ;
+               }
+         } else {
+            push @codelines, $ln ;
+            }
+      } elsif ( $intitle ) {    # After a Title definition, outside a Code Block
+         if ( $begin_lookalike_rx ) {
+
+            # check if if opening chunk of code
+            if ( $begin_syntax_refname_rx ) {
+               my ( $leader, $syntax, $refname ) =
+                  ( $ln =~ /$begin_syntax_refname_rx/ ) ;
+               $set_fence->( $leader, $refname, $syntax ) ;
+            } elsif ( $begin_refname_rx ) {
+               my ( $leader, $refname ) = ( $ln =~ /$begin_refname_rx/ ) ;
+               $set_fence->( $leader, $refname ) ;
+            } elsif ( $begin_syntax_rx ) {
+               my ( $leader, $syntax ) = ( $ln =~ /$begin_syntax_rx/ ) ;
+               $set_fence->( $leader, $intitle, $syntax ) ;
+               }
+            undef $intitle ;
+            }
+      } else {    # Outside of Code and Title and Inside Documentation
+         ( $intitle ) = ( $ln =~ /$title_rx/ )
+            if $title_rx ;
+
+         unless ( $intitle ) {
+            if ( $ln =~ /$begin_lookalike_rx/ ) {
+               if ( $begin_syntax_refname_rx ) {
+                  my ( $leader, $syntax, $refname ) =
+                     ( $ln =~ /$begin_syntax_refname_rx/ ) ;
+                  $set_fence->( $leader, $refname, $syntax ) ;
+                  $lnr = $i ;
+               } elsif ( $begin_refname_rx ) {
+                  my ( $leader, $refname ) = ( $ln =~ /$begin_refname_rx/ ) ;
+                  $set_fence->( $leader, $refname ) ;
+                  $lnr = $i ;
                   }
                }
             }
-         $lnr = $i ;
          }
       }
-   return \%tags ;
+
+   return ( \%index, \%includes ) ;
    }
+
+# structure:
+# {
+#  ref : block[lines]
+#  ref: { refx: [ [ cmd, ln, text, (syntax) ]
+#                 [ cmd, ln, text, (syntax)] ] }
 
 sub resolve_ref {
-   my ( $index, $ref, $comment_format ) = @_ ;
+   my ( $index, $extractor, $basename, $linedir_formats, $comment_formats,
+      $code_filetypes, $file_doc_syntax, $file_code_syntax )
+      = @_ ;
 
-   my $loop ;
-   $loop = sub {
-      my ( $tag ) = @_ ;
-      if ( exists $index->{ $tag } ) {
-         my ( $lnr, @block ) = @{ $index->{ $tag } } ;
-         my @resolved_block = ( sprintf( "$comment_format \n", $lnr ) ) ;
-         foreach my $blockln ( @block ) {
-            if ( ref $blockln eq 'ARRAY' ) {
-               my ( $ref_lnr, $ref_tag ) = @$blockln ;
-               my ( @ref_block ) = $loop->( $ref_tag ) ;
-               push @resolved_block, @ref_block, "\n" ;
+   my $get_syntax = get_syntax( $code_filetypes ) ;
+
+   my ( $extractor_syntax ) = $get_syntax->( $extractor ) ;
+
+   my $get_linedir_fmt = sub {
+      my ( $formats, $lnr, $blksyntax, $lnsyntax, $refname_syntax ) = @_ ;
+      my $syntax ;
+      foreach
+         my $stx ( $lnsyntax, $blksyntax, $refname_syntax, $extractor_syntax,
+         $file_code_syntax ) {
+         if ( $stx ) {
+            if ( $syntax ) {
+               unless ( $syntax eq $stx ) {
+                  die "Err: syntax mismatch ('$stx'/'$syntax')"  ;
+                  }
             } else {
-               push @resolved_block, $blockln ;
+               $syntax = $stx ;
                }
             }
-         return @resolved_block ;
-      } else {
-         die "Err: cannot resolve tag $tag in index" ;
          }
-      } ;
+      return ( exists $formats->{ $syntax } )
+         ? $formats->{ $syntax }
+         : die "Err: syntax for $syntax not exists" ;
+         } ;
 
-   return $loop->( $ref ) ;
+   my $rec ;
+   $rec = sub {
+      my ( $refname ) = @_ ;
+      if ( exists $index->{ $refname } ) {
+         my ( $blocksyntax, $first, @rest ) = @{ $index->{ $refname } } ;
+         if ( ref $first eq 'ARRAY' ) {
+            my ( $refname_syntax ) = $get_syntax->( $refname ) ;
+            my ( @blocklines ) ;
+            foreach my $blockln ( $first, @rest ) {
+               my ( $cmd, $lnr, $txt, $syntax ) = @$blockln ;
+               if ( $cmd eq 'ref' ) {
+                  my $fmt = $get_linedir_fmt->(
+                     $comment_formats, $lnr, $blocksyntax,
+                     $syntax,          $refname_syntax
+                     ) ;
+                  push @blocklines,
+                     sprintf( $fmt, "including $txt (ln:$lnr) " ) ;
+                  push @blocklines, $rec->( $txt ) ;
+               } else {
+                  my $fmt = $get_linedir_fmt->(
+                     $linedir_formats, $lnr, $blocksyntax,
+                     $syntax,          $refname_syntax
+                     ) ;
+                  push @blocklines, sprintf( $fmt, $lnr, $basename ) ;
+                  push @blocklines, $txt ;
+                  }
+               }
+            my ( $blocktext ) = join( "\n", @blocklines ) ;
+            $index->{ $refname } = [ $blocksyntax, $blocktext ] ;
+            return $blocktext ;
+         } else {
+            return $first ;
+            }
+      } else {
+         die "Err: reference '$refname' doesn't exists" ;
+         }
+
+      } ;
+   return $rec->( $extractor ) ;
    }
 
-sub hash_upsidedown {
-   my ( $hash ) = @_ ;
+sub get_syntax {
+   my ( $langs ) = @_ ;
 
-   my %lang_cmt = () ;
-   foreach my $cmt ( keys %$hash ) {
-      my $langs = $hash->{ $cmt } ;
-
-      foreach my $lang ( @$langs ) {
-         $lang_cmt{ $lang } = $cmt ;
+   return sub {
+      my ( $token, $place ) = @_ ;
+      my $result ;
+      if ( $token =~ /[^.]+(\.\w+)(\.\w+)$/ ) {
+         die
+            "Err: no place given for the file with 2 extensions for token '$token'"
+            unless ( defined( $place ) ) ;
+         my @results = ( $1, $2 ) ;
+         $result = $results[ $place ] ;
+      } elsif ( $token =~ /[^.]+(\.\w+)$/ ) {
+         if ( defined( $place ) ) {
+            $result =
+               ( $place == 0 )
+               ? undef
+               : $1 ;
+         } else {
+            $result = $1 ;
+            }
          }
-      }
 
-   return \%lang_cmt ;
+      if ( $result ) {
+         return ( exists $langs->{ $result } )
+            ? $langs->{ $result }
+            : die "Err: could not find entry for '$result' for input '$token'" ;
+         }
+      } ;
+   }
+
+sub get_syntax_from_file {
+   my ( $dict, $opt_value, $basename, $place ) = @_ ;
+
+   my $get_syntax = get_syntax( $dict ) ;
+
+   if ( $opt_value ) {
+      return ( exists $dict->{ $opt_value } )
+         ? $dict->{ $opt_value }
+         : die
+         "Err: this '$opt_value' is not a valid file extension for defining documentation syntax"
+         ;
+   } else {
+      return $get_syntax->( $basename, $place ) ;
+      }
    }
 
 sub main {
-   my ( $lang_cmt ) = hash_upsidedown( \%_comments ) ;
+   my ( $filename, $extractor ) =
+      ( @ARGV == 2 )
+      ? @ARGV
+      : die "usage: $USAGE" ;
 
-   my ( $code_type, $doc_type ) ;
+   my $basename = basename( $filename ) ;
 
-   if ( $_doctype_opt ) {
-      $doc_type = $_doctype_opt ;
-   } else {
-      if ( $_basename =~ /[^.]+\.(\w+)\.(\w+)$/ ) {
-         ( $code_type, $doc_type ) = ( $1, $2 ) ;
-      } elsif ( $_basename =~ /[^.]+\.(\w+)$/ ) {
-         ( $doc_type ) = ( $1 ) ;
-         }
-      }
+   my $default_linedir = "# line %s \"$basename\"" ;
+   my $default_comment = '# %s ' ;
 
-   if ( $_proglang_opt ) {
-      $code_type = $_doctype_opt ;
-   } else {
-      if ( $_basename =~ /[^.]+\.(\w+)\.(\w+)$/ ) {
-         ( $code_type ) = ( $1 ) ;
-         }
-      }
-
-   my ( $doc_patterns ) =
-      ( exists $_tangle_patterns{ $doc_type } )
-      ? $_tangle_patterns{ $doc_type }
-      : die "Err: doctype dont exists" ;
-
-   my ( $comment_format ) =
-      ( exists $lang_cmt->{ $code_type } )
-      ? $lang_cmt->{ $code_type }
-      : die "Err: codetype dont exists" ;
-
-   die "Err: could not fetch $comment_format" unless $comment_format ;
-   die "Err: could not fetch doc_patterns for ext '.$doc_type'"
-      unless $doc_patterns ;
-
-   open( my $fh, '<', $_filename ) || die "Err: can not open file $_filename" ;
+   open( my $fh, '<', $filename ) || die "Err: can not open file $filename" ;
    my @lines = <$fh> ;
    close $fh ;
 
-   my ( $index ) = create_reference_index( $doc_patterns, \@lines ) ;
-   die "Err: no code block in this documents" unless $index ;
+   my ( $doc_filetypes )  = hash_reverse( \%_doc_filetypes ) ;
+   my ( $code_filetypes ) = hash_reverse( \%_code_filetypes ) ;
 
-   #my ($tags, $comment_format, $ref) = @_;
-   foreach ( resolve_ref( $index, $_reference, $comment_format ) ) {
-      print "$_" ;
+   my $file_doc_syntax =
+      get_syntax_from_file( $doc_filetypes, $_docsyntax_opt, $basename, 1 ) ;
 
-      }
+   my ( $tangle_regexes ) =
+      ( exists $_tangle_regexes{ $file_doc_syntax } )
+      ? $_tangle_regexes{ $file_doc_syntax }
+      : die "Err: could not find doc syntax " ;
+
+   my ( $index, $includes ) =
+      create_reference_index( \@lines, $tangle_regexes ) ;
+
+   my $linedir_formats = hash_reverse( \%_linedir_formats ) ;
+   my $comment_formats = hash_reverse( \%_comment_formats ) ;
+
+   my $file_code_syntax =
+      get_syntax_from_file( $code_filetypes, $_docsyntax_opt, $basename, 0 ) ;
+
+   my ( $text ) =
+      resolve_ref( $index, $extractor, $basename, $linedir_formats,
+      $comment_formats, $code_filetypes, $file_doc_syntax, $file_code_syntax ) ;
+
+   print $text;
+
    }
-
 main ;
-
