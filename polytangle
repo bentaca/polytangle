@@ -83,7 +83,7 @@
 # #include "declarations.h"
 # ########
 
-our $USAGE = 'file tag' ;
+our $USAGE = 'file <tag>' ;
 
 use strict ;
 use warnings ;
@@ -91,7 +91,7 @@ use Data::Dumper ;
 use File::Basename ;
 use Getopt::Long qw(GetOptions) ;
 
-my ( $_comment_opt, $_docsyntax_opt, $_codesyntax_opt, $_quiet ) ;
+my ( $_cmd_opt, $_comment_opt, $_docsyntax_opt, $_codesyntax_opt, $_quiet ) ;
 GetOptions(
    'cmt'        => \$_comment_opt,
    'doc-syntax' => \$_docsyntax_opt,
@@ -175,7 +175,7 @@ my $_mkd_capture_fence    = qr,(?|(```)`*|(~~~)~*), ;
 my $_mkd_capture_fence_ws = qr,\s*$_mkd_capture_fence\s*, ;
 my $_mkd_begin_syntax     = qr,^$_mkd_capture_fence$capture_sytx_opt_ws$, ;
 
-my $_mkd_begin_lookalike = qr,^\s*(?:```+|~~~+)[^\~\`]+, ;
+my $_mkd_begin_lookalike = qr,^\s*(?:```+|~~~+)[^\~\`]*, ;
 
 my $_mkd_include_lookalike = qr,^\s*(?:<<|#incl|\@\{.+\}), ;
 my $_mkd_include = qr,^\s*(?|$_inc_noweb|$_inc_noweb_cpp|$_inc_atcurly)\s*$, ;
@@ -184,6 +184,8 @@ my $_mkd_begin_bare = qr,^$_mkd_capture_fence_ws$, ;
 
 my $_mkd_begin_syntax_refname =
    qr,^$_mkd_capture_fence$capture_sytx_ws$_mkd_capture_ref_curly, ;
+
+
 
 my %_tangle_regexes = (
    markdown => {
@@ -226,7 +228,8 @@ sub find_key {
       return $dict->{ $key } ;
    } else {
       if ( $errmsg ) {
-         die $errmsg ;
+         my ( $package, $filename, $line ) = caller;
+         die $errmsg . ": " .  $line ;
       } else {
          return undef ;
          }
@@ -261,6 +264,7 @@ sub parse {
    my ( $begin_refname_rx )        = find_key( $rx, 'begin-refname' ) ;
    my ( $begin_bare_rx )           = find_key( $rx, 'begin-bare' ) ;
 
+
    my ( $begin_lookalike_rx )   = find_key( $rx, 'begin-lookalike' ) ;
    my ( $include_lookalike_rx ) = find_key( $rx, 'include-lookalike' ) ;
    my ( $include_rx )           = find_key( $rx, 'include' ) ;
@@ -269,14 +273,15 @@ sub parse {
    # states
    my ( @codeblock, @codelines ) ;
    my ( $incode,    $intitle, $end ) ;
-   my ( $i,         $lnr ) = ( 0, 0 ) ;
+   my ( $lnr ) = ( 0 ) ;
 
    my $set_fence = sub {
       my ( $leader, $refname, $syntax ) = @_ ;
       $incode = [ $refname, $syntax ] ;
+      my    ( $package, $filename, $line ) = caller;
       ( $end ) =
          find_key( \%_end_code_mark, $leader,
-         "Err: could not find end marker" ) ;
+         "Err: could not find end marker called from: $line  " ) ;
          } ;
 
    my $push_txt_codeblock = sub {
@@ -287,16 +292,44 @@ sub parse {
          }
       } ;
 
+   my ($i) = (0);
+
+   my $find_begin = sub {
+      my ($ln) = @_;
+
+      my   ( $leader, $syntax, $refname ) ;
+
+      if($begin_syntax_refname_rx ) {
+         ( $leader, $syntax, $refname ) =
+            ( $ln =~ /$begin_syntax_refname_rx/ ) ;
+      } 
+      unless($leader){
+         if ( $begin_refname_rx ) {
+            ( $leader, $refname ) = ( $ln =~ /$begin_refname_rx/ ) ;
+         }
+      }
+      unless($leader){
+         if($begin_bare_rx){
+            ( $leader ) = ( $ln =~ /$begin_syntax_rx/ ) ;
+         }
+      }
+      if($leader){
+         $set_fence->( $leader, $refname, $syntax ) ;
+         $lnr = $i;
+      }
+      return ( $leader, $syntax, $refname ) ;
+   };
+
    foreach my $ln ( @$lines ) {
       chomp $ln ;
       $i++ ;
       my @line = () ;
       if ( $incode ) {    # Inside a Codeblock
          if ( $ln =~ /$end/ ) {
-            print Dumper 'jsdfsdjfs';
             my ( $refname, $syntax ) = @$incode ;
             $push_txt_codeblock->($syntax ) ;
 
+            $refname = '*' unless $refname;
             # update codeblock
             if ( exists $index{ $refname } ) {
                my ( $blocksyntax, @existing_blocks ) = @{ $index{ $refname } } ;
@@ -304,7 +337,7 @@ sub parse {
                $index{ $refname } = [ $blocksyntax, @existing_blocks ] ;
             } else {
                $index{ $refname } = [ $syntax, @codeblock ] ;
-               }
+            }
             ( @codeblock ) = () ;
 
             ( $incode, $intitle, $end ) = () ;
@@ -321,21 +354,9 @@ sub parse {
             push @codelines, $ln ;
             }
       } elsif ( $intitle ) {    # After a Title definition, outside a Code Block
-         if ( $begin_lookalike_rx ) {
-
-            # check if if opening chunk of code
-            if ( $begin_syntax_refname_rx ) {
-               my ( $leader, $syntax, $refname ) =
-                  ( $ln =~ /$begin_syntax_refname_rx/ ) ;
-               $set_fence->( $leader, $refname, $syntax ) ;
-            } elsif ( $begin_refname_rx ) {
-               my ( $leader, $refname ) = ( $ln =~ /$begin_refname_rx/ ) ;
-               $set_fence->( $leader, $refname ) ;
-            } elsif ( $begin_syntax_rx ) {
-               my ( $leader, $syntax ) = ( $ln =~ /$begin_syntax_rx/ ) ;
-               $set_fence->( $leader, $intitle, $syntax ) ;
-               }
-            undef $intitle ;
+         if ( $ln =~ $begin_lookalike_rx ) {
+               my ( $leader ) = $find_begin->($ln);
+               undef $intitle if($leader);
             }
       } else {    # Outside of Code and Title and Inside Documentation
          ( $intitle ) = ( $ln =~ /$title_rx/ )
@@ -343,20 +364,11 @@ sub parse {
 
          unless ( $intitle ) {
             if ( $ln =~ /$begin_lookalike_rx/ ) {
-               if ( $begin_syntax_refname_rx ) {
-                  my ( $leader, $syntax, $refname ) =
-                     ( $ln =~ /$begin_syntax_refname_rx/ ) ;
-                  $set_fence->( $leader, $refname, $syntax ) ;
-                  $lnr = $i ;
-               } elsif ( $begin_refname_rx ) {
-                  my ( $leader, $refname ) = ( $ln =~ /$begin_refname_rx/ ) ;
-                  $set_fence->( $leader, $refname ) ;
-                  $lnr = $i ;
-                  }
-               }
+               $find_begin->($ln);
             }
          }
       }
+   }
 
    die "Err: no closing string for code section" if ($incode);
 
@@ -376,7 +388,8 @@ sub resolve_ref {
 
    my $get_syntax = get_syntax( $code_filetypes ) ;
 
-   my ( $extractor_syntax ) = $get_syntax->( $extractor ) ;
+   my ( $errcode, $extractor_syntax ) = $get_syntax->( $extractor ) ;
+   # ignore errcode
 
    my $get_linedir_fmt = sub {
       my ( $formats, $lnr, $blksyntax, $lnsyntax, $refname_syntax ) = @_ ;
@@ -405,7 +418,9 @@ sub resolve_ref {
       if ( exists $index->{ $refname } ) {
          my ( $blocksyntax, $first, @rest ) = @{ $index->{ $refname } } ;
          if ( ref $first eq 'ARRAY' ) {
-            my ( $refname_syntax ) = $get_syntax->( $refname ) ;
+            my ( $errcode, $refname_syntax ) = $get_syntax->( $refname ) ;
+            # ignore $errcode
+            #
             my ( @blocklines ) ;
             foreach my $blockln ( $first, @rest ) {
                my ( $cmd, $lnr, $txt, $syntax ) = @$blockln ;
@@ -465,8 +480,8 @@ sub get_syntax {
 
       if ( $result ) {
          return ( exists $langs->{ $result } )
-            ? $langs->{ $result }
-            : die "Err: could not find entry for '$result' for input '$token'" ;
+            ? (0, $langs->{ $result })
+            : (1, "could not find entry for '$result' for input '$token'") ;
          }
       } ;
    }
@@ -478,10 +493,8 @@ sub get_syntax_from_file {
 
    if ( $opt_value ) {
       return ( exists $dict->{ $opt_value } )
-         ? $dict->{ $opt_value }
-         : die
-         "Err: this option '$opt_value' is not a valid file extension for defining documentation syntax"
-         ;
+         ? (0, $dict->{ $opt_value })
+         : (2, "Err: this option '$opt_value' is not a valid file extension for defining documentation syntax") ;
    } else {
       return $get_syntax->( $basename, $place ) ;
       }
@@ -490,32 +503,50 @@ sub get_syntax_from_file {
 sub data_hash {
    my %hash;
    while(my $ln = <DATA>){
-     my ($key, $val) = split(/\s*:\s*/, $ln);
-     my (@elms) = split(/\s*\,\s*/, $val);
-     $hash{$key} = \@elms;
+      chomp $ln;
+      my ($ext, $lang) = split(/\s*:\s*/, $ln);
+      if(exists $hash{$ext}){
+         die  "Err: already exists : $ext: $hash{$ext}\n";
+      }else{
+         $hash{$ext} = $lang;
+      }
    }
    return \%hash;
 }
 
 sub main {
-   my ( $filename, $extractor ) =
-      ( @ARGV == 2 )
-      ? @ARGV
-      : die "usage: $USAGE" ;
 
-   my $basename = basename( $filename ) ;
+
+   my ( $filename, @extractors); 
+   if( @ARGV == 0 ){ 
+      die "usage: $USAGE" 
+   }elsif( @ARGV == 1 ){ 
+      ($filename) = @ARGV;
+      (@extractors) = '*';
+   }else{
+      ( $filename, @extractors) = @ARGV; 
+   }
+
+   die "Err: file '$filename' doesn't exists" unless( -f $filename);
 
    open( my $fh, '<', $filename ) || die "Err: can not open file $filename" ;
    my @lines = <$fh> ;
    close $fh ;
 
-   my $proglang_filetypes = data_hash(); 
+   my $code_filetypes = data_hash(); 
+
 
    my ( $doc_filetypes )  = hash_reverse( \%_doc_filetypes ) ;
-   my ( $code_filetypes ) = hash_reverse( $proglang_filetypes ) ;
+   #my ( $code_filetypes ) = hash_reverse( $proglang_filetypes ) ;
 
-   my $file_doc_syntax =
+   my $basename = basename( $filename ) ;
+
+   my ($errcode, $file_doc_syntax) =
       get_syntax_from_file( $doc_filetypes, $_docsyntax_opt, $basename, 1 ) ;
+
+   die "Err: could not get syntax from docfile '$basename': ('$file_doc_syntax')"
+      if($errcode);
+      
 
    my ( $tangle_regexes ) =
       ( exists $_tangle_regexes{ $file_doc_syntax } )
@@ -526,146 +557,976 @@ sub main {
       parse( \@lines, $tangle_regexes ) ;
 
 
+
    my $linedir_formats = hash_reverse( \%_linedir_formats ) ;
    my $comment_formats = hash_reverse( \%_comment_formats ) ;
 
    my $file_code_syntax =
       get_syntax_from_file( $code_filetypes, $_codesyntax_opt, $basename, 0 ) ;
 
-   my ( $text ) =
-      resolve_ref( $index, $extractor, $basename, $linedir_formats,
-      $comment_formats, $code_filetypes, $file_doc_syntax, $file_code_syntax ) ;
 
-   print $text;
+   foreach my $extractor (@extractors){
+      my ( $text ) =
+         resolve_ref( $index, $extractor, $basename, $linedir_formats,
+         $comment_formats, $code_filetypes, $file_doc_syntax, $file_code_syntax ) ;
+
+      print $text;
+   }
+
 
    }
 main ;
+
 __DATA__
-Cucumber:.feature
-abap:.abap
-ada:.adb,.ads,.ada
-ahk:.ahk,.ahkl
-apacheconf:.htaccess,apache.conf,apache2.conf
-applescript:.applescript
-as:.as
-as3:.as
-asy:.asy
-bash:.sh,.ksh,.bash
-bat:.bat,.cmd
-befunge:.befunge
-blitzmax:.bmx
-boo:.boo
-brainfuck:.bf,.b
-c:.c,.h
-cfm:.cfm,.cfml,.cfc
-cheetah:.tmpl,.spt
-lisp:.cl,.lisp,.el
-clojure:.clj,.cljs
-cmake:.cmake,CMakeLists.txt
-coffeescript:.coffee
-console:.sh-session
+.1:groff
+.1in:groff
+.1m:groff
+.1x:groff
+.2:groff
+.3:groff
+.3in:groff
+.3m:groff
+.3qt:groff
+.3x:groff
+.4:groff
+.4th:forth
+.5:groff
+.6:groff
+.6pl:perl6
+.6pm:perl6
+.7:groff
+.8:groff
+.9:groff
+.ASM:nasm
+.R:splus
+.Rout:rconsole
+.S:gas
+._coffee:coffeescript
+._js:javascript
+._ls:livescript
+.a51:assembly
+.abap:abap
+.ada:ada
+.adb:ada
+.ado:stata
+.adoc:asciidoc
+.adp:tcl
+.ads:ada
+.agda:agda
+.ahk:autohotkey
+.ahkl:autohotkey
+.aj:aspectj
+.al:perl
+.als:alloy
+.ampl:ampl
+.anim:unity3d-asset
+.ant:xml
+.apacheconf:apacheconf
+.apib:api-blueprint
+.apl:apl
+.applescript:applescript
+.arc:arc
+.arpa:dns-zone
+.as:actionscript
+.asax:asp
+.asc:public-key
+.asciidoc:asciidoc
+.ascx:asp
+.asd:common-lisp
+.ash:ags-script
+.ashx:asp
+.asm:assembly
+.asmx:asp
+.asp:asp
+.aspx:asp
+.asset:unity3d-asset
+.asy:asy
+.au3:autoit
+.aug:augeas
+.auk:awk
+.aux:tex
+.aw:php
+.awk:awk
+.axd:asp
+.axi.erb:netlinx+erb
+.axi:netlinx
+.axml:xml
+.axs.erb:netlinx+erb
+.axs:netlinx
+.b:limbo
+.bas:visual-basic
+.bash:shell
+.bat:batchfile
+.bats:shell
+.bb:blitzbasic
+.bbx:tex
+.befunge:befunge
+.bf:hyphy
+.bib:tex
+.bison:bison
+.bmx:blitzmax
+.bones:javascript
+.boo:boo
+.boot:clojure
+.brd:kicad
+.bro:bro
+.brs:brightscript
+.bsv:bluespec
+.builder:ruby
+.bzl:python
+.c++-objdump:cpp-objdump
+.c++:c++
+.c++objdump:cpp-objdump
+.c-objdump:c-objdump
+.c:c
+.cake:coffeescript
+.capnp:capn-proto
+.cats:c
+.cbl:cobol
+.cbx:tex
+.cc:c++
+.ccp:cobol
+.ccxml:xml
+.cdf:mathematica
+.ceylon:ceylon
+.cfc:coldfusion-cfc
+.cfg:ini
+.cfm:coldfusion
+.cfml:coldfusion
+.cgi:shell
+.ch:xbase
+.chpl:chapel
+.chs:c2hs-haskell
+.cirru:cirru
+.cjsx:coffeescript
+.ck:chuck
+.cl2:clojure
+.cl:opencl
+.click:click
+.clixml:xml
+.clj:clojure
+.cljc:clojure
+.cljs.hl:clojure
+.cljs:clojure
+.cljscm:clojure
+.cljx:clojure
+.clp:clips
+.cls:visual-basic
+.clw:clarion
+.cmake.in:cmake
+.cmake:cmake
+.cmd:batchfile
+.cob:cobol
+.cobol:cobol
+.coffee:coffeescript
+.com:digital-command-language
+.command:shell
+.coq:coq
+.cp:component-pascal
+.cpp-objdump:cpp-objdump
+.cpp:c++
+.cppobjdump:cpp-objdump
+.cproject:xml
+.cps:component-pascal
+.cpy:cobol
+.cql:sql
+.cr:crystal
+.creole:creole
+.cs:smalltalk
+.csh:tcsh
+.cshtml:c#
+.csl:xml
+.cson:coffeescript
+.csproj:xml
+.css:css
+.csv:csv
+.csx:c#
+.ct:xml
+.ctp:php
+.cu:cuda
+.cuh:cuda
+.cw:redcode
+.cxx-objdump:cpp-objdump
+.cxx:c++
+.cy:cycript
+.d-objdump:d-objdump
+.d:makefile
+.darcspatch:darcs-patch
+.dart:dart
+.dats:ats
+.db2:sqlpl
+.dcl:clean
+.ddl:sql
+.decls:blitzbasic
+.def:modula2
+.desktop.in:desktop
+.desktop:desktop
+.dfm:pascal
+.di:d
+.diff:diff
+.dita:xml
+.ditamap:xml
+.ditaval:xml
+.djs:dogescript
+.dll.config:xml
+.dlm:idl
+.dm:dm
+.do:stata
+.dockerfile:dockerfile
+.doh:stata
+.dot:graphviz-(dot)
+.dotsettings:xml
+.dpatch:darcs-patch
+.dpr:pascal
+.druby:mirah
+.dtx:tex
+.duby:mirah
+.duel:duel
+.dyalog:apl
+.dyl:dylan
+.dylan:dylan
+.e:eiffel
+.eam.fs:formatted
+.ebuild:gentoo-ebuild
+.ec:ec
+.ecl:eclipse
+.eclass:gentoo-eclass
+.eclxml:ecl
+.edn:edn
+.eex:html+eex
+.eh:ec
+.el:emacs-lisp
+.eliom:ocaml
+.eliomi:ocaml
+.elm:elm
+.em:emberscript
+.emacs.desktop:emacs-lisp
+.emacs:emacs-lisp
+.emberscript:emberscript
+.epj:ecere-projects
+.eps:postscript
+.erb.deface:html+erb
+.erb:html+erb
+.erl-sh:erl
+.erl:erlang
+.es6:javascript
+.es:javascript
+.escript:erlang
+.evoque:evoque
+.ex:elixir
+.exs:elixir
+.f03:fortran
+.f08:fortran
+.f77:fortran
+.f90:fortran
+.f95:fortran
+.f:forth
+.factor:factor
+.fan:fantom
+.fancypack:fancy
+.fcgi:shell
+.feature:cucumber
+.fhtml:velocity
+.filters:xml
+.fish:fish
+.flex:jflex
+.flux:flux
+.flx:felix
+.flxh:felix
+.for:forth
+.forth:forth
+.fp:glsl
+.fpp:fortran
+.fr:text
+.frag:javascript
+.frg:glsl
+.frm:visual-basic
+.frt:forth
+.frx:visual-basic
+.fs:glsl
+.fsh:glsl
+.fshader:glsl
+.fsi:fsharp
+.fsproj:xml
+.fsx:fsharp
+.fth:forth
+.ftl:freemarker
+.fun:standard-ml
+.fx:hlsl
+.fxh:hlsl
+.fxml:xml
+.fy:fancy
+.g4:antlr
+.g:gap
+.gap:gap
+.gawk:awk
+.gco:g-code
+.gcode:g-code
+.gd:gdscript
+.gemspec:ruby
+.geo:glsl
+.geojson:json
+.geom:glsl
+.gf:grammatical-framework
+.gi:gap
+.glade:xml
+.glf:glyph
+.glsl:glsl
+.glslv:glsl
+.gml:xml
+.gms:gams
+.gnu:gnuplot
+.gnuplot:gnuplot
+.go:go
+.god:ruby
+.golo:golo
+.gp:gnuplot
+.grace:grace
+.gradle:gradle
+.graphql:graphql
+.groovy:groovy
+.grt:groovy
+.grxml:xml
+.gs:javascript
+.gshader:glsl
+.gsp:groovy-server-pages
+.gst:gosu
+.gsx:gosu
+.gtpl:groovy
+.gv:graphviz-dot
+.gvy:groovy
+.gyp:python
+.h++:c++
+.h:objective-c
+.haml.deface:haml
+.haml:haml
+.handlebars:handlebars
+.hats:ats
+.hb:harbour
+.hbs:handlebars
+.hcl:hcl
+.hh:hack
+.hic:clojure
+.hlean:lean
+.hlsl:hlsl
+.hlsli:hlsl
+.hpp:c++
+.hqf:sqf
+.hrl:erlang
+.hs:haskell
+.hsc:haskell
+.htaccess:apacheconf
+.htm:html
+.html.hl:html
+.html:html
+.http:http
+.hx:haxe
+.hxsl:haxe
+.hxx:c++
+.hy:hy
+.hyb:hybris
+.i7x:inform-7
+.iced:coffeescript
+.icl:clean
+.idc:c
+.idr:idris
+.ihlp:stata
+.ijs:j
+.ik:ioke
+.ily:lilypond
+.iml:xml
+.inc:sourcepawn
+.ini:ini
+.inl:c++
+.ino:arduino
+.ins:tex
+.intr:dylan
+.io:io
+.ipf:igor-pro
+.ipp:c++
+.ipynb:jupyter-notebook
+.irbrc:ruby
+.irclog:irc-log
+.iss:inno-setup
+.ivy:xml
+.j:objective-j
+.jade:jade
+.jake:javascript
+.java:java
+.jbst:duel
+.jbuilder:ruby
+.jelly:xml
+.jflex:jflex
+.jinja:html+django
+.jl:julia
+.jq:jsoniq
+.js:javascript
+.jsb:javascript
+.jscad:javascript
+.jsfl:javascript
+.jsm:javascript
+.json5:json5
+.json:json
+.jsonld:jsonld
+.jsp:java-server-pages
+.jsproj:xml
+.jss:javascript
+.jsx:jsx
+.kicad_pcb:kicad
+.kid:genshi
+.kit:kit
+.kml:xml
+.krl:krl
+.ksh:shell
+.kt:kotlin
+.ktm:kotlin
+.kts:kotlin
+.l:picolisp
+.lagda:literate-agda
+.las:lasso
+.lasso8:lasso
+.lasso9:lasso
+.lasso:lasso
+.latte:latte
+.launch:xml
+.lbx:tex
+.ld:linker-script
+.ldml:lasso
+.lds:linker-script
+.lean:lean
+.less:less
+.lex:lex
+.lfe:lfe
+.lgt:logtalk
+.lhs:literate-haskell
+.lid:dylan
+.lidr:idris
+.liquid:liquid
+.lisp:newlisp
+.litcoffee:literate-coffeescript
+.ll:llvm
+.lmi:python
+.lock:json
+.logtalk:logtalk
+.lol:lolcode
+.lookml:lookml
+.lpr:pascal
+.ls:loomscript
+.lsl:lsl
+.lslp:lsl
+.lsp:newlisp
+.ltx:tex
+.lua:lua
+.lvproj:labview
+.ly:lilypond
+.m4:m4sugar
+.m:objective-c
+.ma:mathematica
+.mak:makefile
+.mako:mako
+.man:groff
+.mao:mako
+.maql:maql
+.markdown:markdown
+.mask:mask
+.mat:unity3d-asset
+.mata:stata
+.matah:stata
+.mathematica:mathematica
+.matlab:matlab
+.mawk:awk
+.maxhelp:max
+.maxpat:max
+.maxproj:max
+.mc:mason
+.mcr:maxscript
+.md:markdown
+.mdpolicy:xml
+.me:groff
+.mediawiki:mediawiki
+.meta:unity3d-asset
+.metal:metal
+.mhtml:mason
+.mi:mason
+.minid:minid
+.mir:mirah
+.mirah:mirah
+.mk:makefile
+.mkd:markdown
+.mkdn:markdown
+.mkdown:markdown
+.mkfile:makefile
+.mkii:tex
+.mkiv:tex
+.mkvi:tex
+.ml4:ocaml
+.ml:standard-ml
+.mli:ocaml
+.mll:ocaml
+.mly:ocaml
+.mm:xml
+.mmk:module-management-system
+.mms:module-management-system
+.mo:modelica
+.mod:xml
+.monkey:monkey
+.moo:moocode
+.moon:moonscript
+.ms:maxscript
+.mspec:ruby
+.mss:cartocss
+.mt:mathematica
+.mtml:mtml
+.mu:mupad
+.muf:muf
+.mumps:m
+.mustache:html+django
+.mxml:xml
+.mxt:max
+.myt:myghty
+.n:nemerle
+.nasm:assembly
+.nawk:awk
+.nb:text
+.nbp:mathematica
+.nc:nesc
+.ncl:text
+.nginxconf:nginx
+.ni:inform-7
+.nim:nimrod
+.nimrod:nimrod
+.ninja:ninja
+.nit:nit
+.nix:nix
+.njs:javascript
+.nl:newlisp
+.nlogo:netlogo
+.no:text
+.nproj:xml
+.nqp:perl6
+.ns2:newspeak
+.nse:lua
+.nsh:nsis
+.nsi:nsis
+.nu:nu
+.numpy:numpy
+.numpyw:numpy
+.numsc:numpy
+.nuspec:xml
+.nut:squirrel
+.ny:common-lisp
+.objdump:objdump
+.odd:xml
+.omgrofl:omgrofl
+.ooc:ooc
+.opa:opa
+.opal:opal
+.opencl:opencl
+.org:org
+.osm:xml
+.owl:web-ontology-language
+.ox:ox
+.oxh:ox
+.oxo:ox
+.oxygene:oxygene
+.oz:oz
+.p6:perl6
+.p6l:perl6
+.p6m:perl6
+.p:openedge-abl
+.pac:javascript
+.pan:pan
+.parrot:parrot
+.pas:pascal
+.pasm:parrot-assembly
+.pat:max
+.patch:diff
+.pb:purebasic
+.pbi:purebasic
+.pck:plsql
+.pd:pure-data
+.pd_lua:lua
+.pde:processing
+.perl:perl
+.ph:perl
+.php3:php
+.php4:php
+.php5:php
+.php:php
+.phps:php
+.phpt:php
+.phtml:html+php
+.pig:piglatin
+.pike:pike
+.pir:parrot-internal-representation
+.pkb:plsql
+.pkl:pickle
+.pks:plsql
+.pl6:perl6
+.pl:perl
+.plb:plsql
+.plist:xml
+.plot:gnuplot
+.pls:plsql
+.plsql:plsql
+.plt:gnuplot
+.pluginspec:xml
+.plx:perl
+.pm6:perl6
+.pm:perl6
+.pmod:pike
+.po:gettext-catalog
+.pod:pod
+.podsl:common-lisp
+.podspec:ruby
+.pogo:pogoscript
+.pony:pony
+.pot:gettext-catalog
+.pov:pov-ray-sdl
+.pp:puppet
+.prc:sql
+.prefab:unity3d-asset
+.prefs:ini
+.prg:xbase
+.pri:qmake
+.pro:qmake
+.prolog:prolog
+.properties:ini
+.props:xml
+.proto:protocol-buffer
+.prw:xbase
+.ps1:powershell
+.ps1xml:xml
+.ps:postscript
+.psc1:xml
+.psc:papyrus
+.psd1:powershell
+.psgi:perl
+.psm1:powershell
+.pt:xml
+.pub:public-key
+.purs:purescript
+.pwn:pawn
+.pxd:cython
+.pxi:cython
+.py3tb:py3tb
+.py:python
+.pyde:python
+.pyp:python
+.pyt:python
+.pytb:python-traceback
+.pyw:python
+.pyx:cython
+.qbs:qml
+.qml:qml
+.r2:rebol
+.r3:rebol
+.r:rebol
+.rabl:ruby
+.rake:ruby
+.raml:raml
+.raw:raw-token-data
+.rb:ruby
+.rbbas:realbasic
+.rbfrm:realbasic
+.rbmnu:realbasic
+.rbres:realbasic
+.rbtbar:realbasic
+.rbuild:ruby
+.rbuistate:realbasic
+.rbw:ruby
+.rbx:ruby
+.rbxs:lua
+.rd:r
+.rdf:xml
+.rdoc:rdoc
+.re:reasonml
+.reb:rebol
+.rebol:rebol
+.red:red
+.reds:red
+.reek:yaml
+.res:reasonml
+.rest.txt:restructuredtext
+.rest:restructuredtext
+.rg:rouge
+.rhtml:rhtml
+.rkt:racket
+.rktd:racket
+.rktl:racket
+.rl:ragel-in-ruby-host
+.rmd:rmarkdown
+.rno:groff
+.robot:robotframework
+.roff:groff
+.ron:markdown
+.rpy:renpy
+.rq:sparql
+.rs.in:rust
+.rs:rust
+.rsh:renderscript
+.rss:xml
+.rst.txt:restructuredtext
+.rst:restructuredtext
+.rsx:r
+.ru:ruby
+.ruby:ruby
+.rviz:yaml
+.s:gas
+.sage:sage
+.sagews:sage
+.sas:sas
+.sass:sass
+.sats:ats
+.sbt:scala
+.sc:supercollider
+.scad:openscad
+.scala:scala
+.scaml:scaml
+.scd:supercollider
+.sce:scilab
+.sch:kicad
+.sci:scilab
+.scm:scheme
+.scpt:applescript
+.scrbl:racket
+.scss:scss
+.scxml:xml
+.self:self
+.sexp:common-lisp
+.sh-session:shellsession
+.sh.in:shell
+.sh:shell
+.shader:glsl
+.shen:shen
+.sig:standard-ml
+.sj:objective-j
+.sjs:javascript
+.sl:slash
+.sld:scheme
+.slim:slim
+.sls:scheme
+.sma:sourcepawn
+.smali:smali
+.sml:standard-ml
+.smt2:smt
+.smt:smt
+.sp:sourcepawn
+.sparql:sparql
+.spin:propeller-spin
+.sps:scheme
+.spt:cheetah
+.sqf:sqf
+.sql:sqlpl
+.sqlite3-console:sqlite3
+.srdf:xml
+.ss:scheme
+.ssjs:javascript
+.ssp:ssp
+.st:smalltalk
+.stan:stan
+.sthlp:stata
+.ston:ston
+.storyboard:xml
+.sttheme:xml
+.sty:tex
+.styl:stylus
+.sublime-build:javascript
+.sublime-commands:javascript
+.sublime-completions:javascript
+.sublime-keymap:javascript
+.sublime-macro:javascript
+.sublime-menu:javascript
+.sublime-mousemap:javascript
+.sublime-project:javascript
+.sublime-settings:javascript
+.sublime-snippet:xml
+.sublime-syntax:yaml
+.sublime-theme:javascript
+.sublime-workspace:javascript
+.sublime_metrics:javascript
+.sublime_session:javascript
+.sv:systemverilog
+.svg:svg
+.svh:systemverilog
+.swift:swift
+.syntax:yaml
+.t:turing
+.tab:sql
+.tac:python
+.targets:xml
+.tcc:c++
+.tcl:tcl
+.tcsh:tcsh
+.tea:tea
+.tex:tex
+.textile:textile
+.tf:hcl
+.thor:ruby
+.thrift:thrift
+.thy:isabelle
+.tm:tcl
+.tmcommand:xml
+.tml:xml
+.tmlanguage:xml
+.tmpl:cheetah
+.tmpreferences:xml
+.tmsnippet:xml
+.tmtheme:xml
+.tmux:shell
+.toc:tex
+.toml:toml
+.tool:shell
+.topojson:json
+.tpl:smarty
+.tpp:c++
+.ts:typescript
+.tst:scilab
+.tsx:typescriptreact
+.ttl:turtle
+.tu:turing
+.twig:twig
+.txl:txl
+.txt:text
+.uc:unrealscript
+.udf:sql
+.ui:xml
+.unity:unity3d-asset
+.uno:uno
+.upc:unified-parallel-c
+.ur:urweb
+.urdf:xml
+.urs:urweb
+.ux:xml
+.v:verilog
+.vala:vala
+.vapi:vala
+.vark:gosu
+.vb:visual-basic
+.vba:visual-basic
+.vbhtml:visual-basic
+.vbproj:xml
+.vbs:visual-basic
+.vcl:vcl
+.vcxproj:xml
+.veo:verilog
+.vert:glsl
+.vh:systemverilog
+.vhd:vhdl
+.vhdl:vhdl
+.vhf:vhdl
+.vhi:vhdl
+.vho:vhdl
+.vhost:nginx
+.vhs:vhdl
+.vht:vhdl
+.vhw:vhdl
+.vim:viml
+.vimrc:vim
+.viw:sql
+.vm:velocity
+.volt:volt
+.vrx:glsl
+.vsh:glsl
+.vshader:glsl
+.vssettings:xml
+.vue:vue
+.vxml:xml
+.w:c
+.watchr:ruby
+.webidl:webidl
+.weechatlog:irc-log
+.wiki:mediawiki
+.wisp:wisp
+.wl:mathematica
+.wlt:mathematica
+.wlua:lua
+.wsdl:xml
+.wsf:xml
+.wsgi:python
+.wxi:xml
+.wxl:xml
+.wxs:xml
+.x10:x10
+.x3d:xml
+.x:logos
+.xacro:xml
+.xaml:xml
+.xc:xc
+.xht:html
+.xhtml:html
+.xi:logos
+.xib:xml
+.xlf:xml
+.xliff:xml
+.xm:logos
+.xmi:xml
+.xml.dist:xml
+.xml:xml
+.xojo_code:xojo
+.xojo_menu:xojo
+.xojo_report:xojo
+.xojo_script:xojo
+.xojo_toolbar:xojo
+.xojo_window:xojo
+.xpl:xproc
+.xproc:xproc
+.xproj:xml
+.xpy:python
+.xq:xquery
+.xql:xquery
+.xqm:xquery
+.xquery:xquery
+.xqy:xquery
+.xrl:erlang
+.xs:xs
+.xsd:xml
+.xsjs:javascript
+.xsjslib:javascript
+.xsl:xslt
+.xslt:xslt
+.xsp-config:xpages
+.xsp.metadata:xpages
+.xtend:xtend
+.xul:xml
+.y:yacc
+.yacc:yacc
+.yaml-tmlanguage:yaml
+.yaml:yaml
+.yang:yang
+.yap:prolog
+.yml:yaml
+.yrl:erlang
+.yy:yacc
+.zcml:xml
+.zep:zephir
+.zimpl:zimpl
+.zmpl:zimpl
+.zone:dns-zone
+.zpl:zimpl
+.zsh:shell
+1:groff
+2:groff
+3:groff
+4:groff
+5:groff
+6:groff
+7:groff
+8:groff
+9:groff
+CMakeLists.txt:cmake
+GNUmakefile:make
+Makefile.:make
+Makefile:make
+Rakefile:rb
+SConscript:python
+SConstruct:python
+apache.conf:apacheconf
+apache2.conf:apacheconf
+autodelegate:myghty
+autohandler:mason
 control:control
-cpp:.cpp,.hpp,.c++,.h++,.cc,.hh,.cxx,.hxx,.pde
-csharp:.cs
-css:.css
-cython:.pyx,.pxd,.pxi
-d:.d,.di
-delphi:.pas
-diff:.diff,.patch
-dpatch:.dpatch,.darcspatch
-duel:.duel,.jbst
-dylan:.dylan,.dyl
-erb:.erb
-erl:.erl-sh
-erlang:.erl,.hrl
-evoque:.evoque
-factor:.factor
-felix:.flx,.flxh
-fortran:.f,.f90
-gas:.s,.S
-genshi:.kid
-glsl:.vert,.frag,.geo
-gnuplot:.plot,.plt
-go:.go
-groff:.=>[1234567], ,.man
-haml:.haml
-haskell:.hs
-html:.html,.htm,.xhtml,.xslt
-hx:.hx
-hybris:.hy,.hyb
-ini:.ini,.cfg
-io:.io
-ioke:.ik
-irc:.weechatlog
-jade:.jade
-java:.java
-js:.js
-jsp:.jsp
-lhs:.lhs
-llvm:.ll
-logtalk:.lgt
-lua:.lua,.wlua
-make:.mk,.mak,Makefile,makefile,Makefile.,GNUmakefile
-mako:.mao
-maql:.maql
-mason:.mhtml,.mc,.mi,autohandler,dhandler
-markdown:.md
-modelica:.mo
-modula2:.def,.mod
-moocode:.moo
-mupad:.mu
-mxml:.mxml
-myghty:.myt,autodelegate
-nasm:.asm,.ASM
-newspeak:.ns2
-objdump:.objdump
-objectivec:.m
-objectivej:.j
-standardml:.sml
-reasonml:.re,.res
-ocaml:.ml,.mli,.mll,.mly
-ooc:.ooc
-perl:.pl,.pm
-php:.php,.php=>[345], 
-postscript:.ps,.eps
-pot:.pot,.po
-pov:.pov,.inc
-prolog:.prolog,.pro
-properties:.properties
-protobuf:.proto
-py3tb:.py3tb
-pytb:.pytb
-python:.py,.pyw,.sc,SConstruct,SConscript,.tac
-r:.R
-rb:.rb,.rbw,Rakefile,.rake,.gemspec,.rbx,.duby
-rconsole:.Rout
-rebol:.r,.r3
-redcode:.cw
-rhtml:.rhtml
-rst:.rst,.rest
-sass:.sass
-scala:.scala
-scaml:.scaml
-scheme:.scm
-scss:.scss
-smalltalk:.st
-smarty:.tpl
-sourceslist:sources.list
-splus:.S,.R
-sql:.sql
-sqlite3:.sqlite3-console
-squidconf:squid.conf
-ssp:.ssp
-tcl:.tcl
-tcsh:.tcsh,.csh
-tex:.tex,.aux,.toc
-text:.txt
-v:.v,.sv
-vala:.vala,.vapi
-vbnet:.vb,.bas
-velocity:.vm,.fhtml
-vim:.vim,.vimrc
-xml:.xml,.xsl,.rss,.xslt,.xsd,.wsdl
-xquery:.xqy,.xquery
-xslt:.xsl,.xslt
-yaml:.yaml,.yml
+dhandler:mason
+makefile:make
+sources.list:sourceslist
+squid.conf:squidconf

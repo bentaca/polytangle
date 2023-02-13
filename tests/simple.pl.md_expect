@@ -1,0 +1,4 @@
+#line 3 "simple.pl.md"
+this->( "is"." code")
+#line 10 "simple.pl.md"
+my $cod  = 88;
