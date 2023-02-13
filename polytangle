@@ -275,7 +275,6 @@ sub parse {
       my ( $leader, $refname, $syntax ) = @_ ;
       $incode = [ $refname, $syntax ] ;
       ( $end ) =
-      print LLLLLL => Dumper $leader;
          find_key( \%_end_code_mark, $leader,
          "Err: could not find end marker" ) ;
          } ;
@@ -526,7 +525,6 @@ sub main {
    my ( $index, $includes ) =
       parse( \@lines, $tangle_regexes ) ;
 
-      die 'jsdf';
 
    my $linedir_formats = hash_reverse( \%_linedir_formats ) ;
    my $comment_formats = hash_reverse( \%_comment_formats ) ;
