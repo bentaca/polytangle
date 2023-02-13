@@ -53,7 +53,7 @@
 #  cmd: `pandoc --from=markdown+fenced_code_blocks t.md >t.html`
 #
 #  eg:
-#     ## User Data {#userdata.json}
+#     # User Data {#userdata.json}
 #     This is some json
 #     ```json
 #     { "firstName": "John", }
@@ -81,6 +81,7 @@
 #
 # The C Preprocessor Way
 # #include "declarations.h"
+# ########
 
 our $USAGE = 'file tag' ;
 
@@ -90,166 +91,34 @@ use Data::Dumper ;
 use File::Basename ;
 use Getopt::Long qw(GetOptions) ;
 
-my ( $_comment_opt, $_docsyntax_opt, $_proglang_opt, $_quiet ) ;
+my ( $_comment_opt, $_docsyntax_opt, $_codesyntax_opt, $_quiet ) ;
 GetOptions(
    'cmt'        => \$_comment_opt,
    'doc-syntax' => \$_docsyntax_opt,
-   'proglang'   => \$_proglang_opt,
+   'code-syntax'   => \$_codesyntax_opt,
    'quiet'      => \$_quiet,
-   ) ;
+);
 
 my %_doc_filetypes = (
    noweb    => [ qw( .nw .noweb ) ],
    markdown => [ qw( .md .mkd .markdown ) ],
    org      => [ qw(. org ) ],
-   ) ;
-
-my %_code_filetypes = (
-   Cucumber     => [ '.feature' ],
-   abap         => [ '.abap' ],
-   ada          => [ '.adb',      '.ads', '.ada' ],
-   ahk          => [ '.ahk',      '.ahkl' ],
-   apacheconf   => [ '.htaccess', 'apache.conf', 'apache2.conf' ],
-   applescript  => [ '.applescript' ],
-   as           => [ '.as' ],
-   as3          => [ '.as' ],
-   asy          => [ '.asy' ],
-   bash         => [ '.sh',  '.ksh', '.bash' ],
-   bat          => [ '.bat', '.cmd' ],
-   befunge      => [ '.befunge' ],
-   blitzmax     => [ '.bmx' ],
-   boo          => [ '.boo' ],
-   brainfuck    => [ '.bf',    '.b' ],
-   c            => [ '.c',     '.h' ],
-   cfm          => [ '.cfm',   '.cfml', '.cfc' ],
-   cheetah      => [ '.tmpl',  '.spt' ],
-   lisp         => [ '.cl',    '.lisp', '.el' ],
-   clojure      => [ '.clj',   '.cljs' ],
-   cmake        => [ '.cmake', 'CMakeLists.txt' ],
-   coffeescript => [ '.coffee' ],
-   console      => [ '.sh-session' ],
-   control      => [ 'control' ],
-   cpp          =>
-      [ '.cpp', '.hpp', '.c++', '.h++', '.cc', '.hh', '.cxx', '.hxx', '.pde' ],
-   csharp  => [ '.cs' ],
-   css     => [ '.css' ],
-   cython  => [ '.pyx', '.pxd', '.pxi' ],
-   d       => [ '.d',   '.di' ],
-   delphi  => [ '.pas' ],
-   diff    => [ '.diff',   '.patch' ],
-   dpatch  => [ '.dpatch', '.darcspatch' ],
-   duel    => [ '.duel',   '.jbst' ],
-   dylan   => [ '.dylan',  '.dyl' ],
-   erb     => [ '.erb' ],
-   erl     => [ '.erl-sh' ],
-   erlang  => [ '.erl', '.hrl' ],
-   evoque  => [ '.evoque' ],
-   factor  => [ '.factor' ],
-   felix   => [ '.flx', '.flxh' ],
-   fortran => [ '.f',   '.f90' ],
-   gas     => [ '.s',   '.S' ],
-   genshi  => [ '.kid' ],
-   glsl    => [ '.vert', '.frag', '.geo' ],
-   gnuplot => [ '.plot', '.plt' ],
-   go      => [ '.go' ],
-   groff   => [ '.=>[1234567], ', '.man' ],
-   haml    => [ '.haml' ],
-   haskell => [ '.hs' ],
-   html    => [ '.html', '.htm', '.xhtml', '.xslt' ],
-   hx      => [ '.hx' ],
-   hybris  => [ '.hy',  '.hyb' ],
-   ini     => [ '.ini', '.cfg' ],
-   io      => [ '.io' ],
-   ioke    => [ '.ik' ],
-   irc     => [ '.weechatlog' ],
-   jade    => [ '.jade' ],
-   java    => [ '.java' ],
-   js      => [ '.js' ],
-   jsp     => [ '.jsp' ],
-   lhs     => [ '.lhs' ],
-   llvm    => [ '.ll' ],
-   logtalk => [ '.lgt' ],
-   lua     => [ '.lua', '.wlua' ],
-   make    =>
-      [ '.mk', '.mak', 'Makefile', 'makefile', 'Makefile.', 'GNUmakefile' ],
-   mako       => [ '.mao' ],
-   maql       => [ '.maql' ],
-   mason      => [ '.mhtml', '.mc', '.mi', 'autohandler', 'dhandler' ],
-   markdown   => [ '.md' ],
-   modelica   => [ '.mo' ],
-   modula2    => [ '.def', '.mod' ],
-   moocode    => [ '.moo' ],
-   mupad      => [ '.mu' ],
-   mxml       => [ '.mxml' ],
-   myghty     => [ '.myt', 'autodelegate' ],
-   nasm       => [ '.asm', '.ASM' ],
-   newspeak   => [ '.ns2' ],
-   objdump    => [ '.objdump' ],
-   objectivec => [ '.m' ],
-   objectivej => [ '.j' ],
-   standardml => [ '.sml' ],
-   reasonml   => [ '.re', '.res' ],
-   ocaml      => [ '.ml', '.mli', '.mll', '.mly' ],
-   ooc        => [ '.ooc' ],
-   perl       => [ '.pl',     '.pm' ],
-   php        => [ '.php',    '.php=>[345], ' ],
-   postscript => [ '.ps',     '.eps' ],
-   pot        => [ '.pot',    '.po' ],
-   pov        => [ '.pov',    '.inc' ],
-   prolog     => [ '.prolog', '.pro' ],
-   properties => [ '.properties' ],
-   protobuf   => [ '.proto' ],
-   py3tb      => [ '.py3tb' ],
-   pytb       => [ '.pytb' ],
-   python     => [ '.py', '.pyw', '.sc', 'SConstruct', 'SConscript', '.tac' ],
-   r          => [ '.R' ],
-   rb => [ '.rb', '.rbw', 'Rakefile', '.rake', '.gemspec', '.rbx', '.duby' ],
-   rconsole    => [ '.Rout' ],
-   rebol       => [ '.r', '.r3' ],
-   redcode     => [ '.cw' ],
-   rhtml       => [ '.rhtml' ],
-   rst         => [ '.rst', '.rest' ],
-   sass        => [ '.sass' ],
-   scala       => [ '.scala' ],
-   scaml       => [ '.scaml' ],
-   scheme      => [ '.scm' ],
-   scss        => [ '.scss' ],
-   smalltalk   => [ '.st' ],
-   smarty      => [ '.tpl' ],
-   sourceslist => [ 'sources.list' ],
-   splus       => [ '.S', '.R' ],
-   sql         => [ '.sql' ],
-   sqlite3     => [ '.sqlite3-console' ],
-   squidconf   => [ 'squid.conf' ],
-   ssp         => [ '.ssp' ],
-   tcl         => [ '.tcl' ],
-   tcsh        => [ '.tcsh', '.csh' ],
-   tex         => [ '.tex',  '.aux', '.toc' ],
-   text        => [ '.txt' ],
-   v           => [ '.v',    '.sv' ],
-   vala        => [ '.vala', '.vapi' ],
-   vbnet       => [ '.vb',   '.bas' ],
-   velocity    => [ '.vm',   '.fhtml' ],
-   vim         => [ '.vim',  '.vimrc' ],
-   xml         => [ '.xml',  '.xsl', '.rss', '.xslt', '.xsd', '.wsdl' ],
-   xquery      => [ '.xqy',  '.xquery' ],
-   xslt        => [ '.xsl',  '.xslt' ],
-   yaml        => [ '.yaml', '.yml' ]
-   ) ;
+);
 
 my %_comment_formats = (
    '(* %s *)' => [ qw( standardml ocaml) ],
    '# %s'     => [ qw( perl text make  shell ruby python ) ],
    '// %s'    => [ qw( dlang cpp javascript  reasonml ) ],
    '; %s'     => [ qw( lisp scheme ) ],
-   ) ;
+);
+
 my %_linedir_formats = (
    '# %d "%s"'         => [ qw( ocaml) ],
    '#line %d "%s"'     => [ qw( cpp perl text make shell ruby python ) ],
    '(*line %d "%s" *)' => [ qw( standardml ) ],
    '//line %d "%s"'    => [ qw( dlang javascript  reasonml  ) ],
    ';line %d "%s"'     => [ qw( lisp scheme clojure  ) ],
-   ) ;
+);
 
 # common patterns for references and syntaxes
 #  syntax
@@ -378,11 +247,10 @@ sub hash_reverse {
             }
          }
       }
-
    return \%new_hash ;
-   }
+}
 
-sub create_reference_index {
+sub parse {
    my ( $lines, $rx ) = @_ ;
 
    my ( %index, %includes ) ;
@@ -397,6 +265,7 @@ sub create_reference_index {
    my ( $include_lookalike_rx ) = find_key( $rx, 'include-lookalike' ) ;
    my ( $include_rx )           = find_key( $rx, 'include' ) ;
 
+
    # states
    my ( @codeblock, @codelines ) ;
    my ( $incode,    $intitle, $end ) ;
@@ -406,14 +275,15 @@ sub create_reference_index {
       my ( $leader, $refname, $syntax ) = @_ ;
       $incode = [ $refname, $syntax ] ;
       ( $end ) =
+      print LLLLLL => Dumper $leader;
          find_key( \%_end_code_mark, $leader,
          "Err: could not find end marker" ) ;
          } ;
 
-   my $push_codeblock = sub {
-      my ( $type, $syntax ) = @_ ;
+   my $push_txt_codeblock = sub {
+      my ($syntax ) = @_ ;
       if ( @codelines ) {
-         push @codeblock, [ $type => $lnr, join( "\n", @codelines ), $syntax ] ;
+         push @codeblock, [ txt => $lnr, join( "\n", @codelines ), $syntax ] ;
          @codelines = () ;
          }
       } ;
@@ -424,8 +294,9 @@ sub create_reference_index {
       my @line = () ;
       if ( $incode ) {    # Inside a Codeblock
          if ( $ln =~ /$end/ ) {
+            print Dumper 'jsdfsdjfs';
             my ( $refname, $syntax ) = @$incode ;
-            $push_codeblock->( txt => $syntax ) ;
+            $push_txt_codeblock->($syntax ) ;
 
             # update codeblock
             if ( exists $index{ $refname } ) {
@@ -442,7 +313,7 @@ sub create_reference_index {
          } elsif ( $ln =~ /$include_lookalike_rx/ ) {
             my ( $inc_name ) = ( $ln =~ /$include_rx/ ) ;
             if ( $inc_name ) {
-               $push_codeblock->( 'txt' ) ;
+               $push_txt_codeblock->() ;
                push @codeblock, [ ref => $i, $inc_name ] ;
                $includes{ $inc_name } = 1 ;
                $lnr = $i ;
@@ -488,6 +359,8 @@ sub create_reference_index {
          }
       }
 
+   die "Err: no closing string for code section" if ($incode);
+
    return ( \%index, \%includes ) ;
    }
 
@@ -515,7 +388,7 @@ sub resolve_ref {
          if ( $stx ) {
             if ( $syntax ) {
                unless ( $syntax eq $stx ) {
-                  die "Err: syntax mismatch ('$stx'/'$syntax')"  ;
+                  die "Err: syntax mismatch ('$stx'/'$syntax')" ;
                   }
             } else {
                $syntax = $stx ;
@@ -566,7 +439,7 @@ sub resolve_ref {
 
       } ;
    return $rec->( $extractor ) ;
-   }
+}
 
 sub get_syntax {
    my ( $langs ) = @_ ;
@@ -608,12 +481,22 @@ sub get_syntax_from_file {
       return ( exists $dict->{ $opt_value } )
          ? $dict->{ $opt_value }
          : die
-         "Err: this '$opt_value' is not a valid file extension for defining documentation syntax"
+         "Err: this option '$opt_value' is not a valid file extension for defining documentation syntax"
          ;
    } else {
       return $get_syntax->( $basename, $place ) ;
       }
    }
+
+sub data_hash {
+   my %hash;
+   while(my $ln = <DATA>){
+     my ($key, $val) = split(/\s*:\s*/, $ln);
+     my (@elms) = split(/\s*\,\s*/, $val);
+     $hash{$key} = \@elms;
+   }
+   return \%hash;
+}
 
 sub main {
    my ( $filename, $extractor ) =
@@ -623,32 +506,33 @@ sub main {
 
    my $basename = basename( $filename ) ;
 
-   my $default_linedir = "# line %s \"$basename\"" ;
-   my $default_comment = '# %s ' ;
-
    open( my $fh, '<', $filename ) || die "Err: can not open file $filename" ;
    my @lines = <$fh> ;
    close $fh ;
 
+   my $proglang_filetypes = data_hash(); 
+
    my ( $doc_filetypes )  = hash_reverse( \%_doc_filetypes ) ;
-   my ( $code_filetypes ) = hash_reverse( \%_code_filetypes ) ;
+   my ( $code_filetypes ) = hash_reverse( $proglang_filetypes ) ;
 
    my $file_doc_syntax =
       get_syntax_from_file( $doc_filetypes, $_docsyntax_opt, $basename, 1 ) ;
 
    my ( $tangle_regexes ) =
       ( exists $_tangle_regexes{ $file_doc_syntax } )
-      ? $_tangle_regexes{ $file_doc_syntax }
-      : die "Err: could not find doc syntax " ;
+         ? $_tangle_regexes{ $file_doc_syntax }
+         : die "Err: could not find doc syntax " ;
 
    my ( $index, $includes ) =
-      create_reference_index( \@lines, $tangle_regexes ) ;
+      parse( \@lines, $tangle_regexes ) ;
+
+      die 'jsdf';
 
    my $linedir_formats = hash_reverse( \%_linedir_formats ) ;
    my $comment_formats = hash_reverse( \%_comment_formats ) ;
 
    my $file_code_syntax =
-      get_syntax_from_file( $code_filetypes, $_docsyntax_opt, $basename, 0 ) ;
+      get_syntax_from_file( $code_filetypes, $_codesyntax_opt, $basename, 0 ) ;
 
    my ( $text ) =
       resolve_ref( $index, $extractor, $basename, $linedir_formats,
@@ -658,3 +542,132 @@ sub main {
 
    }
 main ;
+__DATA__
+Cucumber:.feature
+abap:.abap
+ada:.adb,.ads,.ada
+ahk:.ahk,.ahkl
+apacheconf:.htaccess,apache.conf,apache2.conf
+applescript:.applescript
+as:.as
+as3:.as
+asy:.asy
+bash:.sh,.ksh,.bash
+bat:.bat,.cmd
+befunge:.befunge
+blitzmax:.bmx
+boo:.boo
+brainfuck:.bf,.b
+c:.c,.h
+cfm:.cfm,.cfml,.cfc
+cheetah:.tmpl,.spt
+lisp:.cl,.lisp,.el
+clojure:.clj,.cljs
+cmake:.cmake,CMakeLists.txt
+coffeescript:.coffee
+console:.sh-session
+control:control
+cpp:.cpp,.hpp,.c++,.h++,.cc,.hh,.cxx,.hxx,.pde
+csharp:.cs
+css:.css
+cython:.pyx,.pxd,.pxi
+d:.d,.di
+delphi:.pas
+diff:.diff,.patch
+dpatch:.dpatch,.darcspatch
+duel:.duel,.jbst
+dylan:.dylan,.dyl
+erb:.erb
+erl:.erl-sh
+erlang:.erl,.hrl
+evoque:.evoque
+factor:.factor
+felix:.flx,.flxh
+fortran:.f,.f90
+gas:.s,.S
+genshi:.kid
+glsl:.vert,.frag,.geo
+gnuplot:.plot,.plt
+go:.go
+groff:.=>[1234567], ,.man
+haml:.haml
+haskell:.hs
+html:.html,.htm,.xhtml,.xslt
+hx:.hx
+hybris:.hy,.hyb
+ini:.ini,.cfg
+io:.io
+ioke:.ik
+irc:.weechatlog
+jade:.jade
+java:.java
+js:.js
+jsp:.jsp
+lhs:.lhs
+llvm:.ll
+logtalk:.lgt
+lua:.lua,.wlua
+make:.mk,.mak,Makefile,makefile,Makefile.,GNUmakefile
+mako:.mao
+maql:.maql
+mason:.mhtml,.mc,.mi,autohandler,dhandler
+markdown:.md
+modelica:.mo
+modula2:.def,.mod
+moocode:.moo
+mupad:.mu
+mxml:.mxml
+myghty:.myt,autodelegate
+nasm:.asm,.ASM
+newspeak:.ns2
+objdump:.objdump
+objectivec:.m
+objectivej:.j
+standardml:.sml
+reasonml:.re,.res
+ocaml:.ml,.mli,.mll,.mly
+ooc:.ooc
+perl:.pl,.pm
+php:.php,.php=>[345], 
+postscript:.ps,.eps
+pot:.pot,.po
+pov:.pov,.inc
+prolog:.prolog,.pro
+properties:.properties
+protobuf:.proto
+py3tb:.py3tb
+pytb:.pytb
+python:.py,.pyw,.sc,SConstruct,SConscript,.tac
+r:.R
+rb:.rb,.rbw,Rakefile,.rake,.gemspec,.rbx,.duby
+rconsole:.Rout
+rebol:.r,.r3
+redcode:.cw
+rhtml:.rhtml
+rst:.rst,.rest
+sass:.sass
+scala:.scala
+scaml:.scaml
+scheme:.scm
+scss:.scss
+smalltalk:.st
+smarty:.tpl
+sourceslist:sources.list
+splus:.S,.R
+sql:.sql
+sqlite3:.sqlite3-console
+squidconf:squid.conf
+ssp:.ssp
+tcl:.tcl
+tcsh:.tcsh,.csh
+tex:.tex,.aux,.toc
+text:.txt
+v:.v,.sv
+vala:.vala,.vapi
+vbnet:.vb,.bas
+velocity:.vm,.fhtml
+vim:.vim,.vimrc
+xml:.xml,.xsl,.rss,.xslt,.xsd,.wsdl
+xquery:.xqy,.xquery
+xslt:.xsl,.xslt
+yaml:.yaml,.yml
