@@ -1,4 +1,4 @@
 #line 3 "simple.pl.md"
-this->( "is"." code")
-#line 10 "simple.pl.md"
-my $cod  = 88;
+my $kuki = 88;
+#line 9 "simple.pl.md"
+print("jsdf lll");

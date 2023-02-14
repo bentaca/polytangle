@@ -93,24 +93,24 @@ use Getopt::Long qw(GetOptions) ;
 
 my ( $_cmd_opt, $_comment_opt, $_docsyntax_opt, $_codesyntax_opt, $_quiet ) ;
 GetOptions(
-   'cmt'        => \$_comment_opt,
-   'doc-syntax' => \$_docsyntax_opt,
-   'code-syntax'   => \$_codesyntax_opt,
-   'quiet'      => \$_quiet,
-);
+   'cmt'         => \$_comment_opt,
+   'doc-syntax'  => \$_docsyntax_opt,
+   'code-syntax' => \$_codesyntax_opt,
+   'quiet'       => \$_quiet,
+   ) ;
 
 my %_doc_filetypes = (
    noweb    => [ qw( .nw .noweb ) ],
    markdown => [ qw( .md .mkd .markdown ) ],
    org      => [ qw(. org ) ],
-);
+   ) ;
 
 my %_comment_formats = (
    '(* %s *)' => [ qw( standardml ocaml) ],
    '# %s'     => [ qw( perl text make  shell ruby python ) ],
    '// %s'    => [ qw( dlang cpp javascript  reasonml ) ],
    '; %s'     => [ qw( lisp scheme ) ],
-);
+   ) ;
 
 my %_linedir_formats = (
    '# %d "%s"'         => [ qw( ocaml) ],
@@ -118,7 +118,7 @@ my %_linedir_formats = (
    '(*line %d "%s" *)' => [ qw( standardml ) ],
    '//line %d "%s"'    => [ qw( dlang javascript  reasonml  ) ],
    ';line %d "%s"'     => [ qw( lisp scheme clojure  ) ],
-);
+   ) ;
 
 # common patterns for references and syntaxes
 #  syntax
@@ -143,22 +143,27 @@ my $_inc_noweb_cpp = qr,\#include\s+$_inc_noweb, ;
 my $_inc_atcurly   = qr,\@\{$capture_ref_ws\}, ;
 
 ## Noweb
+# todo titles: \section{Introduction} \label{introduction}
 my $_nw_begin_refname     = qr|^\s*(<<)$capture_ref>>=\s*$| ;
 my $_nw_begin_lookalike   = qr,^\s*<<, ;
+my $_nw_title_lookalike   = qr,^\s*\\section, ;
 my $_nw_include_lookalike = qr,^\s*<<, ;
+my $_nw_end_lookalike     = qr,^\s*\@, ;
 my $_nw_include           = qr,^\s*$_inc_noweb\s*$, ;
 
 ## Orgmode
-my $_org_capture_begin = qr,\s*(\#\+begin_src)\s*, ;
-my $_org_title_refname = qr,^\s*\#\+name\:$capture_ref_ws, ;    # $1: title
+my $_org_capture_begin   = qr,\s*(\#\+begin_src)\s*, ;
+my $_org_title_lookalike = qr,^\s*\#\+name\:, ;                   # $1: title
+my $_org_title_refname   = qr,^\s*\#\+name\:$capture_ref_ws, ;    # $1: title
 my $_org_begin_syntax =
-   qr,^$_org_capture_begin\s$capture_sytx_opt_ws, ;             # $1:lang
+   qr,^$_org_capture_begin\s$capture_sytx_opt_ws, ;               # $1:lang
 my $_org_begin_syntax_refname =
    qr,^$_org_capture_begin\s$capture_sytx_opt_ws.*(?<=\:tangle)\s*$capture_ref_ws.*$,
    ;
 my $_org_begin_bare = qr,^$_org_capture_begin$, ;
 
 my $_org_begin_lookalike   = qr,^\s*\#\+begin_src, ;
+my $_org_end_lookalike     = qr,^\s*\#\+end_src, ;
 my $_org_include_lookalike = qr,^\s<<, ;
 my $_org_include           = $_nw_include ;
 
@@ -169,13 +174,14 @@ my $_org_include           = $_nw_include ;
 #
 my $_mkd_capture_ref_curly = qr,\s*\{\s*\#$capture_ref\s*\}\s*, ;
 my $_mkd_title_refname     = qr,^\s*\#+\s+.+$_mkd_capture_ref_curly.*$, ;
+my $_mkd_title_lookalike   = qr,^\s*\#+, ;
 
 # markdown fence
 my $_mkd_capture_fence    = qr,(?|(```)`*|(~~~)~*), ;
 my $_mkd_capture_fence_ws = qr,\s*$_mkd_capture_fence\s*, ;
 my $_mkd_begin_syntax     = qr,^$_mkd_capture_fence$capture_sytx_opt_ws$, ;
 
-my $_mkd_begin_lookalike = qr,^\s*(?:```+|~~~+)[^\~\`]*, ;
+my $_mkd_begin_lookalike = qr,^\s*(?:```+|~~~+), ;
 
 my $_mkd_include_lookalike = qr,^\s*(?:<<|#incl|\@\{.+\}), ;
 my $_mkd_include = qr,^\s*(?|$_inc_noweb|$_inc_noweb_cpp|$_inc_atcurly)\s*$, ;
@@ -185,14 +191,14 @@ my $_mkd_begin_bare = qr,^$_mkd_capture_fence_ws$, ;
 my $_mkd_begin_syntax_refname =
    qr,^$_mkd_capture_fence$capture_sytx_ws$_mkd_capture_ref_curly, ;
 
-
-
 my %_tangle_regexes = (
    markdown => {
       'begin-syntax-refname' => $_mkd_begin_syntax_refname,
       'title-refname'        => $_mkd_title_refname,
+      'title-lookalike'      => $_mkd_title_lookalike,
       'begin-syntax'         => $_mkd_begin_syntax,
       'begin-lookalike'      => $_mkd_begin_lookalike,
+      'end-lookalike'        => $_mkd_begin_lookalike,
       'include-lookalike'    => $_mkd_include_lookalike,
       'include'              => $_mkd_include,
       'begin-bare'           => $_mkd_begin_bare,
@@ -201,8 +207,10 @@ my %_tangle_regexes = (
    orgmode => {
       'begin-syntax-refname' => $_org_begin_syntax_refname,
       'title-refname'        => $_org_title_refname,
+      'title-lookalike'      => $_org_title_lookalike,
       'begin-syntax'         => $_org_begin_syntax,
       'begin-lookalike'      => $_org_begin_lookalike,
+      'end-lookalike'        => $_org_end_lookalike,
       'include-lookalike'    => $_org_include_lookalike,
       'include'              => $_org_include,
       'begin-bare'           => $_org_begin_bare,
@@ -210,6 +218,8 @@ my %_tangle_regexes = (
    noweb => {
       'begin-refname'     => $_nw_begin_refname,
       'begin-lookalike'   => $_nw_begin_lookalike,
+      'title-lookalike'   => $_nw_title_lookalike,
+      'end-lookalike'     => $_nw_end_lookalike,
       'include-lookalike' => $_nw_include_lookalike,
       'include'           => $_nw_include,
       }
@@ -228,8 +238,8 @@ sub find_key {
       return $dict->{ $key } ;
    } else {
       if ( $errmsg ) {
-         my ( $package, $filename, $line ) = caller;
-         die $errmsg . ": " .  $line ;
+         my ( $package, $filename, $line ) = caller ;
+         die $errmsg . ": " . $line ;
       } else {
          return undef ;
          }
@@ -251,7 +261,7 @@ sub hash_reverse {
          }
       }
    return \%new_hash ;
-}
+   }
 
 sub parse {
    my ( $lines, $rx ) = @_ ;
@@ -259,104 +269,98 @@ sub parse {
    my ( %index, %includes ) ;
 
    my ( $title_rx )                = find_key( $rx, 'title-refname' ) ;
+   my ( $title_lookalike_rx )      = find_key( $rx, 'title-lookalike' ) ;
    my ( $begin_syntax_refname_rx ) = find_key( $rx, 'begin-syntax-refname' ) ;
    my ( $begin_syntax_rx )         = find_key( $rx, 'begin-syntax' ) ;
    my ( $begin_refname_rx )        = find_key( $rx, 'begin-refname' ) ;
    my ( $begin_bare_rx )           = find_key( $rx, 'begin-bare' ) ;
 
-
    my ( $begin_lookalike_rx )   = find_key( $rx, 'begin-lookalike' ) ;
+   my ( $end_lookalike_rx )     = find_key( $rx, 'end-lookalike' ) ;
    my ( $include_lookalike_rx ) = find_key( $rx, 'include-lookalike' ) ;
    my ( $include_rx )           = find_key( $rx, 'include' ) ;
 
-
    # states
    my ( @codeblock, @codelines ) ;
-   my ( $incode,    $intitle, $end ) ;
-   my ( $lnr ) = ( 0 ) ;
-
-   my $set_fence = sub {
-      my ( $leader, $refname, $syntax ) = @_ ;
-      $incode = [ $refname, $syntax ] ;
-      my    ( $package, $filename, $line ) = caller;
-      ( $end ) =
-         find_key( \%_end_code_mark, $leader,
-         "Err: could not find end marker called from: $line  " ) ;
-         } ;
+   my ( $incode,    $intitle ) ;
 
    my $push_txt_codeblock = sub {
-      my ($syntax ) = @_ ;
       if ( @codelines ) {
+         my ( $syntax, $lnr ) = @_ ;
          push @codeblock, [ txt => $lnr, join( "\n", @codelines ), $syntax ] ;
-         @codelines = () ;
+         ( @codelines ) = () ;
          }
       } ;
 
-   my ($i) = (0);
+   my $find_begin_set_incode = sub {
+      my ( $ln, $lni ) = @_ ;
 
-   my $find_begin = sub {
-      my ($ln) = @_;
+      my ( $leader, $syntax, $refname ) ;
 
-      my   ( $leader, $syntax, $refname ) ;
-
-      if($begin_syntax_refname_rx ) {
+      if ( $begin_syntax_refname_rx ) {
          ( $leader, $syntax, $refname ) =
             ( $ln =~ /$begin_syntax_refname_rx/ ) ;
-      } 
-      unless($leader){
+         }
+      unless ( $leader ) {
          if ( $begin_refname_rx ) {
             ( $leader, $refname ) = ( $ln =~ /$begin_refname_rx/ ) ;
+            }
          }
-      }
-      unless($leader){
-         if($begin_bare_rx){
+      unless ( $leader ) {
+         if ( $begin_bare_rx ) {
             ( $leader ) = ( $ln =~ /$begin_syntax_rx/ ) ;
+            }
          }
-      }
-      if($leader){
-         $set_fence->( $leader, $refname, $syntax ) ;
-         $lnr = $i;
-      }
-      return ( $leader, $syntax, $refname ) ;
-   };
+      if ( $leader ) {
+         my ( $end ) = find_key( \%_end_code_mark, $leader,
+            "Err: could not find end marker called from" ) ;
+         $incode = [ $lni, $syntax, $refname, $end ] ;
+         }
+      return ( $leader ) ;
+      } ;
 
+   my ( $lni ) = ( 0 ) ;
    foreach my $ln ( @$lines ) {
       chomp $ln ;
-      $i++ ;
+      $lni++ ;
       my @line = () ;
       if ( $incode ) {    # Inside a Codeblock
-         if ( $ln =~ /$end/ ) {
-            my ( $refname, $syntax ) = @$incode ;
-            $push_txt_codeblock->($syntax ) ;
+         if ( $ln =~ /$end_lookalike_rx/ ) {
 
-            $refname = '*' unless $refname;
-            # update codeblock
-            if ( exists $index{ $refname } ) {
-               my ( $blocksyntax, @existing_blocks ) = @{ $index{ $refname } } ;
-               push @existing_blocks, @codeblock ;
-               $index{ $refname } = [ $blocksyntax, @existing_blocks ] ;
-            } else {
-               $index{ $refname } = [ $syntax, @codeblock ] ;
-            }
-            ( @codeblock ) = () ;
+            my ( $lnr, $syntax, $refname, $end ) = @$incode ;
 
-            ( $incode, $intitle, $end ) = () ;
+            if ( $ln =~ /$end/ ) {
+               $push_txt_codeblock->( $syntax, $lnr ) ;
 
+               $refname = '*' unless $refname ;
+
+               # update codeblock
+               if ( exists $index{ $refname } ) {
+                  my ( $blocksyntax, @existing_blocks ) =
+                     @{ $index{ $refname } } ;
+                  push @existing_blocks, @codeblock ;
+                  $index{ $refname } = [ $blocksyntax, @existing_blocks ] ;
+               } else {
+                  $index{ $refname } = [ $syntax, @codeblock ] ;
+                  }
+               ( @codeblock, $incode, $intitle, $end ) = () ;
+               }
          } elsif ( $ln =~ /$include_lookalike_rx/ ) {
             my ( $inc_name ) = ( $ln =~ /$include_rx/ ) ;
             if ( $inc_name ) {
-               $push_txt_codeblock->() ;
-               push @codeblock, [ ref => $i, $inc_name ] ;
+               my ( $lnr, $syntax, @refname_end ) = @$incode ;
+               $push_txt_codeblock->( $syntax, $lnr ) ;
+               push @codeblock, [ ref => $lni, $inc_name ] ;
                $includes{ $inc_name } = 1 ;
-               $lnr = $i ;
+               $incode = [ $lni, $syntax, @refname_end ] ;
                }
          } else {
             push @codelines, $ln ;
             }
       } elsif ( $intitle ) {    # After a Title definition, outside a Code Block
          if ( $ln =~ $begin_lookalike_rx ) {
-               my ( $leader ) = $find_begin->($ln);
-               undef $intitle if($leader);
+            my ( $leader ) = $find_begin_set_incode->( $ln, $lni ) ;
+            undef $intitle if ( $leader ) ;
             }
       } else {    # Outside of Code and Title and Inside Documentation
          ( $intitle ) = ( $ln =~ /$title_rx/ )
@@ -364,13 +368,13 @@ sub parse {
 
          unless ( $intitle ) {
             if ( $ln =~ /$begin_lookalike_rx/ ) {
-               $find_begin->($ln);
+               $find_begin_set_incode->( $ln, $lni ) ;
+               }
             }
          }
       }
-   }
 
-   die "Err: no closing string for code section" if ($incode);
+   die "Err: no closing string for code section" if ( $incode ) ;
 
    return ( \%index, \%includes ) ;
    }
@@ -389,6 +393,7 @@ sub resolve_ref {
    my $get_syntax = get_syntax( $code_filetypes ) ;
 
    my ( $errcode, $extractor_syntax ) = $get_syntax->( $extractor ) ;
+
    # ignore errcode
 
    my $get_linedir_fmt = sub {
@@ -419,6 +424,7 @@ sub resolve_ref {
          my ( $blocksyntax, $first, @rest ) = @{ $index->{ $refname } } ;
          if ( ref $first eq 'ARRAY' ) {
             my ( $errcode, $refname_syntax ) = $get_syntax->( $refname ) ;
+
             # ignore $errcode
             #
             my ( @blocklines ) ;
@@ -453,7 +459,7 @@ sub resolve_ref {
 
       } ;
    return $rec->( $extractor ) ;
-}
+   }
 
 sub get_syntax {
    my ( $langs ) = @_ ;
@@ -480,8 +486,8 @@ sub get_syntax {
 
       if ( $result ) {
          return ( exists $langs->{ $result } )
-            ? (0, $langs->{ $result })
-            : (1, "could not find entry for '$result' for input '$token'") ;
+            ? ( 0, $langs->{ $result } )
+            : ( 1, "could not find entry for '$result' for input '$token'" ) ;
          }
       } ;
    }
@@ -493,70 +499,68 @@ sub get_syntax_from_file {
 
    if ( $opt_value ) {
       return ( exists $dict->{ $opt_value } )
-         ? (0, $dict->{ $opt_value })
-         : (2, "Err: this option '$opt_value' is not a valid file extension for defining documentation syntax") ;
+         ? ( 0, $dict->{ $opt_value } )
+         : (
+         2,
+         "Err: this option '$opt_value' is not a valid file extension for defining documentation syntax"
+         ) ;
    } else {
       return $get_syntax->( $basename, $place ) ;
       }
    }
 
 sub data_hash {
-   my %hash;
-   while(my $ln = <DATA>){
-      chomp $ln;
-      my ($ext, $lang) = split(/\s*:\s*/, $ln);
-      if(exists $hash{$ext}){
-         die  "Err: already exists : $ext: $hash{$ext}\n";
-      }else{
-         $hash{$ext} = $lang;
+   my %hash ;
+   while ( my $ln = <DATA> ) {
+      chomp $ln ;
+      my ( $ext, $lang ) = split( /\s*:\s*/, $ln ) ;
+      if ( exists $hash{ $ext } ) {
+         die "Err: already exists : $ext: $hash{$ext}\n" ;
+      } else {
+         $hash{ $ext } = $lang ;
+         }
       }
+   return \%hash ;
    }
-   return \%hash;
-}
 
 sub main {
 
+   my ( $filename, @extractors ) ;
+   if ( @ARGV == 0 ) {
+      die "usage: $USAGE" ;
+   } elsif ( @ARGV == 1 ) {
+      ( $filename, @extractors ) = ( $ARGV[ 0 ], '*' ) ;
+   } else {
+      ( $filename, @extractors ) = @ARGV ;
+      }
 
-   my ( $filename, @extractors); 
-   if( @ARGV == 0 ){ 
-      die "usage: $USAGE" 
-   }elsif( @ARGV == 1 ){ 
-      ($filename) = @ARGV;
-      (@extractors) = '*';
-   }else{
-      ( $filename, @extractors) = @ARGV; 
-   }
-
-   die "Err: file '$filename' doesn't exists" unless( -f $filename);
+   die "Err: file '$filename' doesn't exists" unless ( -f $filename ) ;
 
    open( my $fh, '<', $filename ) || die "Err: can not open file $filename" ;
    my @lines = <$fh> ;
    close $fh ;
 
-   my $code_filetypes = data_hash(); 
+   my $code_filetypes = data_hash() ;
 
+   my ( $doc_filetypes ) = hash_reverse( \%_doc_filetypes ) ;
 
-   my ( $doc_filetypes )  = hash_reverse( \%_doc_filetypes ) ;
    #my ( $code_filetypes ) = hash_reverse( $proglang_filetypes ) ;
 
    my $basename = basename( $filename ) ;
 
-   my ($errcode, $file_doc_syntax) =
+   my ( $errcode, $file_doc_syntax ) =
       get_syntax_from_file( $doc_filetypes, $_docsyntax_opt, $basename, 1 ) ;
 
-   die "Err: could not get syntax from docfile '$basename': ('$file_doc_syntax')"
-      if($errcode);
-      
+   die
+      "Err: could not get syntax from docfile '$basename': ('$file_doc_syntax')"
+      if ( $errcode ) ;
 
    my ( $tangle_regexes ) =
       ( exists $_tangle_regexes{ $file_doc_syntax } )
-         ? $_tangle_regexes{ $file_doc_syntax }
-         : die "Err: could not find doc syntax " ;
+      ? $_tangle_regexes{ $file_doc_syntax }
+      : die "Err: could not find doc syntax " ;
 
-   my ( $index, $includes ) =
-      parse( \@lines, $tangle_regexes ) ;
-
-
+   my ( $index, $includes ) = parse( \@lines, $tangle_regexes ) ;
 
    my $linedir_formats = hash_reverse( \%_linedir_formats ) ;
    my $comment_formats = hash_reverse( \%_comment_formats ) ;
@@ -564,15 +568,14 @@ sub main {
    my $file_code_syntax =
       get_syntax_from_file( $code_filetypes, $_codesyntax_opt, $basename, 0 ) ;
 
-
-   foreach my $extractor (@extractors){
+   foreach my $extractor ( @extractors ) {
       my ( $text ) =
          resolve_ref( $index, $extractor, $basename, $linedir_formats,
-         $comment_formats, $code_filetypes, $file_doc_syntax, $file_code_syntax ) ;
+         $comment_formats, $code_filetypes, $file_doc_syntax,
+         $file_code_syntax ) ;
 
       print $text;
-   }
-
+      }
 
    }
 main ;
