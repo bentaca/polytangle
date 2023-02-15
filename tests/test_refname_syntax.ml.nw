@@ -1,0 +1,15 @@
+\documentclass{report}
+
+jsdfjsf
+
+<<fofo>>=
+let fofo = 88;
+@
+
+jsdfjsdf
+
+<<test.ml>>=
+<<fofo>>
+@
+
+jsdfsdf

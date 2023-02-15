@@ -91,8 +91,10 @@ use Data::Dumper ;
 use File::Basename ;
 use Getopt::Long qw(GetOptions) ;
 
-my ( $_cmd_opt, $_comment_opt, $_docsyntax_opt, $_codesyntax_opt, $_quiet ) ;
+my ( $_print_opt, $_save_opt, $_cmd_opt, $_comment_opt, $_docsyntax_opt, $_codesyntax_opt, $_quiet ) ;
 GetOptions(
+   'print'         => \$_print_opt,
+   'save'         => \$_save_opt,
    'cmt'         => \$_comment_opt,
    'doc-syntax'  => \$_docsyntax_opt,
    'code-syntax' => \$_codesyntax_opt,
@@ -100,6 +102,7 @@ GetOptions(
    ) ;
 
 my %_doc_filetypes = (
+   mkdnoweb    => [ qw( .mnw  ) ],
    noweb    => [ qw( .nw .noweb ) ],
    markdown => [ qw( .md .mkd .markdown ) ],
    org      => [ qw(. org ) ],
@@ -112,13 +115,16 @@ my %_comment_formats = (
    '; %s'     => [ qw( lisp scheme ) ],
    ) ;
 
-my %_linedir_formats = (
-   '# %d "%s"'         => [ qw( ocaml) ],
-   '#line %d "%s"'     => [ qw( cpp perl text make shell ruby python ) ],
-   '(*line %d "%s" *)' => [ qw( standardml ) ],
-   '//line %d "%s"'    => [ qw( dlang javascript  reasonml  ) ],
-   ';line %d "%s"'     => [ qw( lisp scheme clojure  ) ],
-   ) ;
+sub get_linedir_formatstr {
+   my ($basename) = @_;
+   return { 
+      qq(# %d "$basename")         => [ qw( ocaml) ],
+      qq(#line %d "$basename")     => [ qw( cpp perl text make shell ruby python ) ],
+      qq|(*line %d "$basename" *)| => [ qw( standardml ) ],
+      qq(//line %d "$basename")    => [ qw( dlang javascript  reasonml  ) ],
+      qq(;line %d "%s")     => [ qw( lisp scheme clojure  ) ],
+   } ;
+}
 
 # common patterns for references and syntaxes
 #  syntax
@@ -151,6 +157,7 @@ my $_nw_include_lookalike = qr,^\s*<<, ;
 my $_nw_end_lookalike     = qr,^\s*\@, ;
 my $_nw_include           = qr,^\s*$_inc_noweb\s*$, ;
 
+
 ## Orgmode
 my $_org_capture_begin   = qr,\s*(\#\+begin_src)\s*, ;
 my $_org_title_lookalike = qr,^\s*\#\+name\:, ;                   # $1: title
@@ -179,26 +186,32 @@ my $_mkd_title_lookalike   = qr,^\s*\#+, ;
 # markdown fence
 my $_mkd_capture_fence    = qr,(?|(```)`*|(~~~)~*), ;
 my $_mkd_capture_fence_ws = qr,\s*$_mkd_capture_fence\s*, ;
-my $_mkd_begin_syntax     = qr,^$_mkd_capture_fence$capture_sytx_opt_ws$, ;
 
-my $_mkd_begin_lookalike = qr,^\s*(?:```+|~~~+), ;
+my $_mkd_begin_lookalike = qr,^\s*(?:```+|~~~+|<<), ;
 
 my $_mkd_include_lookalike = qr,^\s*(?:<<|#incl|\@\{.+\}), ;
 my $_mkd_include = qr,^\s*(?|$_inc_noweb|$_inc_noweb_cpp|$_inc_atcurly)\s*$, ;
 
 my $_mkd_begin_bare = qr,^$_mkd_capture_fence_ws$, ;
 
-my $_mkd_begin_syntax_refname =
-   qr,^$_mkd_capture_fence$capture_sytx_ws$_mkd_capture_ref_curly, ;
+my $_mkd_begin_syntax     = qr,^$_mkd_capture_fence$capture_sytx_opt_ws$, ;
+
+my $_mkd_begin_refname_syntax = qr,^\s*(?|(?:(```+|~~~+)\s*\{\s*\#([\w\-\.]+)\s*(?:\.([\.\w\-]+))?.*\}))\s*$,;
+
+my $_mkd_end_lookalike = qr,^\s*(?:```+|~~~+|@), ;
+
+## Mkdnoweb
+# todo titles: \section{Introduction} \label{introduction}
+
 
 my %_tangle_regexes = (
    markdown => {
-      'begin-syntax-refname' => $_mkd_begin_syntax_refname,
+      'begin-refname-syntax' => $_mkd_begin_refname_syntax,
       'title-refname'        => $_mkd_title_refname,
       'title-lookalike'      => $_mkd_title_lookalike,
       'begin-syntax'         => $_mkd_begin_syntax,
       'begin-lookalike'      => $_mkd_begin_lookalike,
-      'end-lookalike'        => $_mkd_begin_lookalike,
+      'end-lookalike'        => $_mkd_end_lookalike,
       'include-lookalike'    => $_mkd_include_lookalike,
       'include'              => $_mkd_include,
       'begin-bare'           => $_mkd_begin_bare,
@@ -222,8 +235,16 @@ my %_tangle_regexes = (
       'end-lookalike'     => $_nw_end_lookalike,
       'include-lookalike' => $_nw_include_lookalike,
       'include'           => $_nw_include,
+      },
+   mkdnoweb => {
+      'begin-refname'     => qr;^\s*(<<)$capture_ref>>=\s*$; ,
+      'begin-lookalike'   => qr;^\s*<<;,
+      'end-lookalike'     => qr;^\s*\@;,
+      'include-lookalike' => qr;^\s*<<;,
+      'include'           => qr;^\s*$_inc_noweb\s*$;,
       }
-      ) ;
+) ;
+
 
 my %_end_code_mark = (
    '#+begin_src' => qr|\s*\#\+end_src\s*$|,
@@ -239,7 +260,7 @@ sub find_key {
    } else {
       if ( $errmsg ) {
          my ( $package, $filename, $line ) = caller ;
-         die $errmsg . ": " . $line ;
+         die $errmsg . ": " . $key . ", line:" . $line ;
       } else {
          return undef ;
          }
@@ -266,23 +287,35 @@ sub hash_reverse {
 sub parse {
    my ( $lines, $rx ) = @_ ;
 
-   my ( %index, %includes ) ;
-
-   my ( $title_rx )                = find_key( $rx, 'title-refname' ) ;
-   my ( $title_lookalike_rx )      = find_key( $rx, 'title-lookalike' ) ;
+   # mandatory regexes
+   my ( $begin_refname_rx )        = find_key( $rx, 'begin-refname');
    my ( $begin_syntax_refname_rx ) = find_key( $rx, 'begin-syntax-refname' ) ;
+   my ( $begin_refname_syntax_rx ) = find_key( $rx, 'begin-refname-syntax' ) ;
+
+   die "Err: need a least one begin regex" 
+      unless($begin_refname_rx or $begin_syntax_refname_rx or $begin_refname_syntax_rx);
+
+
+   my ( $begin_lookalike_rx )   = find_key( $rx, 'begin-lookalike', 
+      "Err: could not fetch key" ) ;
+   my ( $end_lookalike_rx )     = find_key( $rx, 'end-lookalike', 
+      "Err: could not fetch key" ) ;
+   my ( $include_lookalike_rx ) = find_key( $rx, 'include-lookalike', 
+      "Err: could not fetch key" ) ;
+   my ( $include_rx )           = find_key( $rx, 'include' , 
+      "Err: could not fetch key") ;
+
+   # optional regexes
+   my ( $title_lookalike_rx )      = find_key( $rx, 'title-lookalike' ) ;
+   my ( $title_rx )                = find_key( $rx, 'title-refname' ) ;
    my ( $begin_syntax_rx )         = find_key( $rx, 'begin-syntax' ) ;
-   my ( $begin_refname_rx )        = find_key( $rx, 'begin-refname' ) ;
    my ( $begin_bare_rx )           = find_key( $rx, 'begin-bare' ) ;
 
-   my ( $begin_lookalike_rx )   = find_key( $rx, 'begin-lookalike' ) ;
-   my ( $end_lookalike_rx )     = find_key( $rx, 'end-lookalike' ) ;
-   my ( $include_lookalike_rx ) = find_key( $rx, 'include-lookalike' ) ;
-   my ( $include_rx )           = find_key( $rx, 'include' ) ;
 
    # states
    my ( @codeblock, @codelines ) ;
    my ( $incode,    $intitle ) ;
+   my ( %index, %includes ) ;
 
    my $push_txt_codeblock = sub {
       if ( @codelines ) {
@@ -293,14 +326,19 @@ sub parse {
       } ;
 
    my $find_begin_set_incode = sub {
-      my ( $ln, $lni ) = @_ ;
+      my ( $ln, $lni, ($title) ) = @_ ;
 
-      my ( $leader, $syntax, $refname ) ;
+      my ( $leader, $syntax, $refname, $end ) ;
 
       if ( $begin_syntax_refname_rx ) {
          ( $leader, $syntax, $refname ) =
             ( $ln =~ /$begin_syntax_refname_rx/ ) ;
-         }
+      }elsif ( $begin_refname_syntax_rx ) {
+         if ( $begin_refname_syntax_rx ) {
+            ( $leader, $refname , $syntax) = ( $ln =~ /$begin_refname_syntax_rx/ ) ;
+            }
+      }
+
       unless ( $leader ) {
          if ( $begin_refname_rx ) {
             ( $leader, $refname ) = ( $ln =~ /$begin_refname_rx/ ) ;
@@ -309,15 +347,19 @@ sub parse {
       unless ( $leader ) {
          if ( $begin_bare_rx ) {
             ( $leader ) = ( $ln =~ /$begin_syntax_rx/ ) ;
+            $refname = ($title) ? $title : '*';
             }
          }
+
       if ( $leader ) {
          my ( $end ) = find_key( \%_end_code_mark, $leader,
             "Err: could not find end marker called from" ) ;
-         $incode = [ $lni, $syntax, $refname, $end ] ;
-         }
-      return ( $leader ) ;
-      } ;
+         return ($lni, $syntax, $refname, $end ) ;
+      }else{
+         return ();
+      }
+
+   } ;
 
    my ( $lni ) = ( 0 ) ;
    foreach my $ln ( @$lines ) {
@@ -327,9 +369,11 @@ sub parse {
       if ( $incode ) {    # Inside a Codeblock
          if ( $ln =~ /$end_lookalike_rx/ ) {
 
-            my ( $lnr, $syntax, $refname, $end ) = @$incode ;
+            my ($end_rx) = $$incode[$#$incode];
 
-            if ( $ln =~ /$end/ ) {
+            if ( $ln =~ /$end_rx/ ) {
+                  
+               my ( $lnr, $syntax, $refname, $end ) = @$incode ;
                $push_txt_codeblock->( $syntax, $lnr ) ;
 
                $refname = '*' unless $refname ;
@@ -359,20 +403,27 @@ sub parse {
             }
       } elsif ( $intitle ) {    # After a Title definition, outside a Code Block
          if ( $ln =~ $begin_lookalike_rx ) {
-            my ( $leader ) = $find_begin_set_incode->( $ln, $lni ) ;
-            undef $intitle if ( $leader ) ;
+            my ( $leader, @stx_refn_end ) = $find_begin_set_incode->( $ln, $lni, $intitle ) ;
+            if($leader){
+               $incode = [ $leader, @stx_refn_end];
+               undef $intitle if ( $leader ) ;
             }
+         }
       } else {    # Outside of Code and Title and Inside Documentation
-         ( $intitle ) = ( $ln =~ /$title_rx/ )
-            if $title_rx ;
+         if($title_lookalike_rx){
+            if($ln =~ /$title_lookalike_rx/){
+               ( $intitle ) = ( $ln =~ /$title_rx/ );
+            }
+         }
 
          unless ( $intitle ) {
             if ( $ln =~ /$begin_lookalike_rx/ ) {
-               $find_begin_set_incode->( $ln, $lni ) ;
-               }
+               my ( $leader, @stx_refn_end ) = $find_begin_set_incode->( $ln, $lni, $intitle ) ;
+               $incode = [ $leader, @stx_refn_end] if ($leader);
             }
-         }
+          }
       }
+   }
 
    die "Err: no closing string for code section" if ( $incode ) ;
 
@@ -386,7 +437,7 @@ sub parse {
 #                 [ cmd, ln, text, (syntax)] ] }
 
 sub resolve_ref {
-   my ( $index, $extractor, $basename, $linedir_formats, $comment_formats,
+   my ( $index, $extractor, $linedir_formats, $comment_formats,
       $code_filetypes, $file_doc_syntax, $file_code_syntax )
       = @_ ;
 
@@ -443,7 +494,7 @@ sub resolve_ref {
                      $linedir_formats, $lnr, $blocksyntax,
                      $syntax,          $refname_syntax
                      ) ;
-                  push @blocklines, sprintf( $fmt, $lnr, $basename ) ;
+                  push @blocklines, sprintf( $fmt, $lnr ) ;
                   push @blocklines, $txt ;
                   }
                }
@@ -545,8 +596,11 @@ sub main {
    my ( $doc_filetypes ) = hash_reverse( \%_doc_filetypes ) ;
 
    #my ( $code_filetypes ) = hash_reverse( $proglang_filetypes ) ;
+   #
+  my $basename = basename( $filename ) ;
+  my ($name,$path,$ext) = fileparse($filename,qr,\..[^.]*$,);
 
-   my $basename = basename( $filename ) ;
+
 
    my ( $errcode, $file_doc_syntax ) =
       get_syntax_from_file( $doc_filetypes, $_docsyntax_opt, $basename, 1 ) ;
@@ -562,22 +616,47 @@ sub main {
 
    my ( $index, $includes ) = parse( \@lines, $tangle_regexes ) ;
 
-   my $linedir_formats = hash_reverse( \%_linedir_formats ) ;
+   my $linedir_formatstr_index =  get_linedir_formatstr($basename); 
+
+   my $linedir_formats = hash_reverse( $linedir_formatstr_index ) ;
    my $comment_formats = hash_reverse( \%_comment_formats ) ;
 
    my $file_code_syntax =
       get_syntax_from_file( $code_filetypes, $_codesyntax_opt, $basename, 0 ) ;
 
+
    foreach my $extractor ( @extractors ) {
       my ( $text ) =
-         resolve_ref( $index, $extractor, $basename, $linedir_formats,
+         resolve_ref( $index, $extractor, $linedir_formats,
          $comment_formats, $code_filetypes, $file_doc_syntax,
          $file_code_syntax ) ;
 
-      print $text;
-      }
+      if ($text){
+         if($_save_opt){
+            my $outfile = ($extractor eq '*')
+               ? $name
+               : $extractor;
+            open(my $fh, '>', $outfile) || die "Err: could not create out file";
+            if(-f $name){
+               seek($fh,0,0);
+               print $fh $text;
+               truncate($fh, tell($fh));  # remove everything after current file position
+            }else{
+               print $fh $text;
+            }
+            close($fh);
 
+            if($_print_opt){
+               print($text);
+            }
+         }else{
+            print $text
+         }
+      }
    }
+}
+
+
 main ;
 
 __DATA__
@@ -1063,7 +1142,7 @@ __DATA__
 .mkiv:tex
 .mkvi:tex
 .ml4:ocaml
-.ml:standard-ml
+.ml:ocaml
 .mli:ocaml
 .mll:ocaml
 .mly:ocaml

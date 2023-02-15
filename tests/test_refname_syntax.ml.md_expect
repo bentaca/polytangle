@@ -1,0 +1,7 @@
+# 14 "test_refname_syntax.ml.md"
+let foo = 88
+(* including foo (ln:16)  *)
+# 6 "test_refname_syntax.ml.md"
+let _ = print_endline "jsdfsj"
+# 10 "test_refname_syntax.ml.md"
+let x = print_endline "jsdfsj"
