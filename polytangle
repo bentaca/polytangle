@@ -91,10 +91,11 @@ use Data::Dumper ;
 use File::Basename ;
 use Getopt::Long qw(GetOptions) ;
 
-my ( $_print_opt, $_save_opt, $_cmd_opt, $_comment_opt, $_docsyntax_opt, $_codesyntax_opt, $_quiet ) ;
+my ( $_print_opt, $_save_opt, $_cmd_opt, $_comment_opt, $_docsyntax_opt,
+   $_codesyntax_opt, $_quiet ) ;
 GetOptions(
-   'print'         => \$_print_opt,
-   'save'         => \$_save_opt,
+   'print'       => \$_print_opt,
+   'save'        => \$_save_opt,
    'cmt'         => \$_comment_opt,
    'doc-syntax'  => \$_docsyntax_opt,
    'code-syntax' => \$_codesyntax_opt,
@@ -102,7 +103,7 @@ GetOptions(
    ) ;
 
 my %_doc_filetypes = (
-   mkdnoweb    => [ qw( .mnw  ) ],
+   mkdnoweb => [ qw( .mnw  ) ],
    noweb    => [ qw( .nw .noweb ) ],
    markdown => [ qw( .md .mkd .markdown ) ],
    org      => [ qw(. org ) ],
@@ -116,15 +117,16 @@ my %_comment_formats = (
    ) ;
 
 sub get_linedir_formatstr {
-   my ($basename) = @_;
-   return { 
-      qq(# %d "$basename")         => [ qw( ocaml) ],
-      qq(#line %d "$basename")     => [ qw( cpp perl text make shell ruby python ) ],
+   my ( $basename ) = @_ ;
+   return {
+      qq(# %d "$basename")     => [ qw( ocaml) ],
+      qq(#line %d "$basename") =>
+         [ qw( cpp perl text make shell ruby python ) ],
       qq|(*line %d "$basename" *)| => [ qw( standardml ) ],
       qq(//line %d "$basename")    => [ qw( dlang javascript  reasonml  ) ],
-      qq(;line %d "%s")     => [ qw( lisp scheme clojure  ) ],
-   } ;
-}
+      qq(;line %d "%s")            => [ qw( lisp scheme clojure  ) ],
+      } ;
+   }
 
 # common patterns for references and syntaxes
 #  syntax
@@ -156,7 +158,6 @@ my $_nw_title_lookalike   = qr,^\s*\\section, ;
 my $_nw_include_lookalike = qr,^\s*<<, ;
 my $_nw_end_lookalike     = qr,^\s*\@, ;
 my $_nw_include           = qr,^\s*$_inc_noweb\s*$, ;
-
 
 ## Orgmode
 my $_org_capture_begin   = qr,\s*(\#\+begin_src)\s*, ;
@@ -194,15 +195,16 @@ my $_mkd_include = qr,^\s*(?|$_inc_noweb|$_inc_noweb_cpp|$_inc_atcurly)\s*$, ;
 
 my $_mkd_begin_bare = qr,^$_mkd_capture_fence_ws$, ;
 
-my $_mkd_begin_syntax     = qr,^$_mkd_capture_fence$capture_sytx_opt_ws$, ;
+my $_mkd_begin_syntax = qr,^$_mkd_capture_fence$capture_sytx_opt_ws$, ;
 
-my $_mkd_begin_refname_syntax = qr,^\s*(?|(?:(```+|~~~+)\s*\{\s*\#([\w\-\.]+)\s*(?:\.([\.\w\-]+))?.*\}))\s*$,;
+my $_mkd_begin_refname_syntax =
+   qr,^\s*(?|(?:(```+|~~~+)\s*\{\s*\#([\w\-\.]+)\s*(?:\.([\.\w\-]+))?.*\}))\s*$,
+   ;
 
 my $_mkd_end_lookalike = qr,^\s*(?:```+|~~~+|@), ;
 
 ## Mkdnoweb
 # todo titles: \section{Introduction} \label{introduction}
-
 
 my %_tangle_regexes = (
    markdown => {
@@ -237,14 +239,13 @@ my %_tangle_regexes = (
       'include'           => $_nw_include,
       },
    mkdnoweb => {
-      'begin-refname'     => qr;^\s*(<<)$capture_ref>>=\s*$; ,
+      'begin-refname'     => qr;^\s*(<<)$capture_ref>>=\s*$;,
       'begin-lookalike'   => qr;^\s*<<;,
       'end-lookalike'     => qr;^\s*\@;,
       'include-lookalike' => qr;^\s*<<;,
       'include'           => qr;^\s*$_inc_noweb\s*$;,
       }
-) ;
-
+      ) ;
 
 my %_end_code_mark = (
    '#+begin_src' => qr|\s*\#\+end_src\s*$|,
@@ -288,34 +289,33 @@ sub parse {
    my ( $lines, $rx ) = @_ ;
 
    # mandatory regexes
-   my ( $begin_refname_rx )        = find_key( $rx, 'begin-refname');
+   my ( $begin_refname_rx )        = find_key( $rx, 'begin-refname' ) ;
    my ( $begin_syntax_refname_rx ) = find_key( $rx, 'begin-syntax-refname' ) ;
    my ( $begin_refname_syntax_rx ) = find_key( $rx, 'begin-refname-syntax' ) ;
 
-   die "Err: need a least one begin regex" 
-      unless($begin_refname_rx or $begin_syntax_refname_rx or $begin_refname_syntax_rx);
+   die "Err: need a least one begin regex"
+      unless ( $begin_refname_rx
+      or $begin_syntax_refname_rx
+      or $begin_refname_syntax_rx ) ;
 
-
-   my ( $begin_lookalike_rx )   = find_key( $rx, 'begin-lookalike', 
-      "Err: could not fetch key" ) ;
-   my ( $end_lookalike_rx )     = find_key( $rx, 'end-lookalike', 
-      "Err: could not fetch key" ) ;
-   my ( $include_lookalike_rx ) = find_key( $rx, 'include-lookalike', 
-      "Err: could not fetch key" ) ;
-   my ( $include_rx )           = find_key( $rx, 'include' , 
-      "Err: could not fetch key") ;
+   my ( $begin_lookalike_rx ) =
+      find_key( $rx, 'begin-lookalike', "Err: could not fetch key" ) ;
+   my ( $end_lookalike_rx ) =
+      find_key( $rx, 'end-lookalike', "Err: could not fetch key" ) ;
+   my ( $include_lookalike_rx ) =
+      find_key( $rx, 'include-lookalike', "Err: could not fetch key" ) ;
+   my ( $include_rx ) = find_key( $rx, 'include', "Err: could not fetch key" ) ;
 
    # optional regexes
-   my ( $title_lookalike_rx )      = find_key( $rx, 'title-lookalike' ) ;
-   my ( $title_rx )                = find_key( $rx, 'title-refname' ) ;
-   my ( $begin_syntax_rx )         = find_key( $rx, 'begin-syntax' ) ;
-   my ( $begin_bare_rx )           = find_key( $rx, 'begin-bare' ) ;
-
+   my ( $title_lookalike_rx ) = find_key( $rx, 'title-lookalike' ) ;
+   my ( $title_rx )           = find_key( $rx, 'title-refname' ) ;
+   my ( $begin_syntax_rx )    = find_key( $rx, 'begin-syntax' ) ;
+   my ( $begin_bare_rx )      = find_key( $rx, 'begin-bare' ) ;
 
    # states
    my ( @codeblock, @codelines ) ;
    my ( $incode,    $intitle ) ;
-   my ( %index, %includes ) ;
+   my ( %index,     %includes ) ;
 
    my $push_txt_codeblock = sub {
       if ( @codelines ) {
@@ -326,18 +326,19 @@ sub parse {
       } ;
 
    my $find_begin_set_incode = sub {
-      my ( $ln, $lni, ($title) ) = @_ ;
+      my ( $ln, $lni, ( $title ) ) = @_ ;
 
       my ( $leader, $syntax, $refname, $end ) ;
 
       if ( $begin_syntax_refname_rx ) {
          ( $leader, $syntax, $refname ) =
             ( $ln =~ /$begin_syntax_refname_rx/ ) ;
-      }elsif ( $begin_refname_syntax_rx ) {
+      } elsif ( $begin_refname_syntax_rx ) {
          if ( $begin_refname_syntax_rx ) {
-            ( $leader, $refname , $syntax) = ( $ln =~ /$begin_refname_syntax_rx/ ) ;
+            ( $leader, $refname, $syntax ) =
+               ( $ln =~ /$begin_refname_syntax_rx/ ) ;
             }
-      }
+         }
 
       unless ( $leader ) {
          if ( $begin_refname_rx ) {
@@ -347,19 +348,19 @@ sub parse {
       unless ( $leader ) {
          if ( $begin_bare_rx ) {
             ( $leader ) = ( $ln =~ /$begin_syntax_rx/ ) ;
-            $refname = ($title) ? $title : '*';
+            $refname = ( $title ) ? $title : '*' ;
             }
          }
 
       if ( $leader ) {
          my ( $end ) = find_key( \%_end_code_mark, $leader,
             "Err: could not find end marker called from" ) ;
-         return ($lni, $syntax, $refname, $end ) ;
-      }else{
-         return ();
-      }
+         return ( $lni, $syntax, $refname, $end ) ;
+      } else {
+         return () ;
+         }
 
-   } ;
+      } ;
 
    my ( $lni ) = ( 0 ) ;
    foreach my $ln ( @$lines ) {
@@ -369,10 +370,10 @@ sub parse {
       if ( $incode ) {    # Inside a Codeblock
          if ( $ln =~ /$end_lookalike_rx/ ) {
 
-            my ($end_rx) = $$incode[$#$incode];
+            my ( $end_rx ) = $$incode[ $#$incode ] ;
 
             if ( $ln =~ /$end_rx/ ) {
-                  
+
                my ( $lnr, $syntax, $refname, $end ) = @$incode ;
                $push_txt_codeblock->( $syntax, $lnr ) ;
 
@@ -403,27 +404,29 @@ sub parse {
             }
       } elsif ( $intitle ) {    # After a Title definition, outside a Code Block
          if ( $ln =~ $begin_lookalike_rx ) {
-            my ( $leader, @stx_refn_end ) = $find_begin_set_incode->( $ln, $lni, $intitle ) ;
-            if($leader){
-               $incode = [ $leader, @stx_refn_end];
+            my ( $leader, @stx_refn_end ) =
+               $find_begin_set_incode->( $ln, $lni, $intitle ) ;
+            if ( $leader ) {
+               $incode = [ $leader, @stx_refn_end ] ;
                undef $intitle if ( $leader ) ;
+               }
             }
-         }
       } else {    # Outside of Code and Title and Inside Documentation
-         if($title_lookalike_rx){
-            if($ln =~ /$title_lookalike_rx/){
-               ( $intitle ) = ( $ln =~ /$title_rx/ );
+         if ( $title_lookalike_rx ) {
+            if ( $ln =~ /$title_lookalike_rx/ ) {
+               ( $intitle ) = ( $ln =~ /$title_rx/ ) ;
+               }
             }
-         }
 
          unless ( $intitle ) {
             if ( $ln =~ /$begin_lookalike_rx/ ) {
-               my ( $leader, @stx_refn_end ) = $find_begin_set_incode->( $ln, $lni, $intitle ) ;
-               $incode = [ $leader, @stx_refn_end] if ($leader);
+               my ( $leader, @stx_refn_end ) =
+                  $find_begin_set_incode->( $ln, $lni, $intitle ) ;
+               $incode = [ $leader, @stx_refn_end ] if ( $leader ) ;
+               }
             }
-          }
+         }
       }
-   }
 
    die "Err: no closing string for code section" if ( $incode ) ;
 
@@ -437,8 +440,11 @@ sub parse {
 #                 [ cmd, ln, text, (syntax)] ] }
 
 sub resolve_ref {
-   my ( $index, $extractor, $linedir_formats, $comment_formats,
-      $code_filetypes, $file_doc_syntax, $file_code_syntax )
+   my (
+      $index,           $extractor,      $linedir_formats,
+      $comment_formats, $code_filetypes, $file_doc_syntax,
+      $file_code_syntax
+      )
       = @_ ;
 
    my $get_syntax = get_syntax( $code_filetypes ) ;
@@ -597,10 +603,8 @@ sub main {
 
    #my ( $code_filetypes ) = hash_reverse( $proglang_filetypes ) ;
    #
-  my $basename = basename( $filename ) ;
-  my ($name,$path,$ext) = fileparse($filename,qr,\..[^.]*$,);
-
-
+   my $basename = basename( $filename ) ;
+   my ( $name, $path, $ext ) = fileparse( $filename, qr,\..[^.]*$, ) ;
 
    my ( $errcode, $file_doc_syntax ) =
       get_syntax_from_file( $doc_filetypes, $_docsyntax_opt, $basename, 1 ) ;
@@ -616,7 +620,7 @@ sub main {
 
    my ( $index, $includes ) = parse( \@lines, $tangle_regexes ) ;
 
-   my $linedir_formatstr_index =  get_linedir_formatstr($basename); 
+   my $linedir_formatstr_index = get_linedir_formatstr( $basename ) ;
 
    my $linedir_formats = hash_reverse( $linedir_formatstr_index ) ;
    my $comment_formats = hash_reverse( \%_comment_formats ) ;
@@ -624,38 +628,40 @@ sub main {
    my $file_code_syntax =
       get_syntax_from_file( $code_filetypes, $_codesyntax_opt, $basename, 0 ) ;
 
-
    foreach my $extractor ( @extractors ) {
-      my ( $text ) =
-         resolve_ref( $index, $extractor, $linedir_formats,
+      my ( $text ) = resolve_ref(
+         $index,           $extractor,      $linedir_formats,
          $comment_formats, $code_filetypes, $file_doc_syntax,
-         $file_code_syntax ) ;
+         $file_code_syntax
+         ) ;
 
-      if ($text){
-         if($_save_opt){
-            my $outfile = ($extractor eq '*')
+      if ( $text ) {
+         if ( $_save_opt ) {
+            my $outfile =
+               ( $extractor eq '*' )
                ? $name
-               : $extractor;
-            open(my $fh, '>', $outfile) || die "Err: could not create out file";
-            if(-f $name){
-               seek($fh,0,0);
-               print $fh $text;
-               truncate($fh, tell($fh));  # remove everything after current file position
-            }else{
-               print $fh $text;
-            }
-            close($fh);
+               : $extractor ;
+            open( my $fh, '>', $outfile )
+               || die "Err: could not create out file" ;
+            if ( -f $name ) {
+               seek( $fh, 0, 0 ) ;
+               print $fh $text ;
+               truncate( $fh, tell( $fh ) )
+                  ;    # remove everything after current file position
+            } else {
+               print $fh $text ;
+               }
+            close( $fh ) ;
 
-            if($_print_opt){
-               print($text);
+            if ( $_print_opt ) {
+               print( $text) ;
+               }
+         } else {
+            print $text  ;
             }
-         }else{
-            print $text
          }
       }
    }
-}
-
 
 main ;
 
